@@ -1,0 +1,33 @@
+{
+  "name": "@dev.hiconic/local-first",
+  "version": "1.0.0",
+  "description": "A js library that supports local-first web applications based on CRDT + MVC principles",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest"
+  },
+  "keywords": [],
+  "author": "Dirk Scheffler",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@dev.hiconic/tf.js_hc-js-api": "^3.0.10",
+    "solid-js": "^1.9.3"
+  },
+  "devDependencies": {
+    "@dev.hiconic/runtime": "file:./hc-rt",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.6"
+  },
+  "source": "src/local-first.ts",
+  "main": "dist/local-first.js",
+  "types": "dist/local-first.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./dist/local-first.js",
+    "./continuation": "./dist/continuation.js"
+  }
+}
