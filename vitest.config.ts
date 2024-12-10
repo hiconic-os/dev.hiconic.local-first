@@ -8,5 +8,11 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    reporters: [
+      'default',
+      ['vitest-sonar-reporter', {
+        outputFile: 'junit.xml', // Path for the JUnit XML report
+      }],
+    ],
   },
 });

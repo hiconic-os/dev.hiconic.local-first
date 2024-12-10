@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "vitest"
+    "test": "vitest --run"
   },
   "keywords": [],
   "author": "Dirk Scheffler",
@@ -18,7 +18,8 @@
     "@dev.hiconic/runtime": "file:./hc-rt",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.6"
+    "vitest": "^2.1.6",
+    "vitest-sonar-reporter": "^2.0.0"
   },
   "source": "src/local-first.ts",
   "main": "dist/local-first.js",
@@ -28,6 +29,17 @@
   ],
   "exports": {
     ".": "./dist/local-first.js",
-    "./continuation": "./dist/continuation.js"
+    "./continuation": "./dist/continuation.js",
+    "./entity-signals": "./dist/entity-signals.js",
+    "./managed-entities": "./dist/managed-entities.js",
+    "./manipulation-buffer": "./dist/manipulation-buffer.js",
+    "./manipulation-marshaler": "./dist/manipulation-marshaler.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hiconic-os/npm.local-first.git"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
