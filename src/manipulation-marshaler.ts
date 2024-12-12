@@ -1,5 +1,16 @@
-import { eval_, service, session, modelpath, remote, reason, reflection, util, lang, time, math, T, hc } from "@dev.hiconic/tf.js_hc-js-api";
-import { Manipulation, CompoundManipulation, InstantiationManipulation, DeleteManipulation, PropertyManipulation, ChangeValueManipulation, AddManipulation, RemoveManipulation, ClearCollectionManipulation, ManifestationManipulation, LifecycleManipulation } from "@dev.hiconic/gm_manipulation-model";
+import { reflection, lang, math, T, hc } from "@dev.hiconic/tf.js_hc-js-api";
+import {
+    Manipulation,
+    CompoundManipulation,
+    InstantiationManipulation,
+    DeleteManipulation,
+    PropertyManipulation,
+    ChangeValueManipulation,
+    AddManipulation,
+    RemoveManipulation,
+    ClearCollectionManipulation,
+    ManifestationManipulation
+} from "@dev.hiconic/gm_manipulation-model";
 import * as vM from "@dev.hiconic/gm_value-descriptor-model";
 import * as oM from "@dev.hiconic/gm_owner-model";
 import * as rM from "@dev.hiconic/gm_root-model";
@@ -9,8 +20,6 @@ import { map, set, list, float, double, integer, long, decimal, date } from "@de
 import TypeCode = reflection.TypeCode
 
 export class ManipulationMarshaller {
-
-    private merges = new Array<any[]>();
 
     async marshalToString(manipulations: Manipulation[]): Promise<string> {
         const json = await this.marshalToJson(manipulations);
@@ -72,7 +81,7 @@ class ManipulationToJson extends Continuation {
 
     async transform(manipulations: Manipulation[]): Promise<any[]> {
         const json = new Array<any[]>();
-        
+
         // transform the manipulations into json structures and collect coalescings
         this.manipulationsToJson(manipulations, json);
 
@@ -138,7 +147,7 @@ class ManipulationToJson extends Continuation {
 
         let latestChange: any[] | null;
         let multiChange: boolean = false;
-        
+
         this.forEachOf(manipulations, m => {
             const json = this.manipulationToJson(m);
             const op = json[0];
@@ -164,7 +173,7 @@ class ManipulationToJson extends Continuation {
                 latestChange = null;
                 multiChange = false;
             }
-            
+
             jsons.push(json);
         });
     }
@@ -175,7 +184,7 @@ class ManipulationToJson extends Continuation {
         const iterable = m.compoundManipulationList.values();
 
         this.manipulationsToJson(iterable, json);
-        
+
         return json;
     }
 
@@ -190,33 +199,33 @@ class ManipulationToJson extends Continuation {
 
     private changeValueToJson(m: ChangeValueManipulation): ChangeValueTuple {
         const [id, property, type] = this.owner(m);
-        return ["@", id, {[property]: this.valueToJson(type, m.newValue)}];
+        return ["@", id, { [property]: this.valueToJson(type, m.newValue) }];
     }
-    
+
     private addToJson(m: AddManipulation): ChangeValueTuple {
         return this.addOrRemoveToJson(m, m.itemsToAdd, "+");
     }
-    
+
     private removeToJson(m: RemoveManipulation): ChangeValueTuple {
         return this.addOrRemoveToJson(m, m.itemsToRemove, "-");
     }
 
     private clearToJson(m: ClearCollectionManipulation): ChangeValueTuple {
-        const [id, property, type] = this.owner(m);
-        return ["@",id,"~",[property]];
+        const [id, property] = this.owner(m);
+        return ["@", id, "~", [property]];
     }
-    
+
     private addOrRemoveToJson(m: PropertyManipulation, itemsToAddOrRemove: map<any, any>, op: string): ChangeValueTuple {
         const [id, property, type] = this.owner(m);
 
         let items: any;
-        
+
         switch (type.getTypeCode()) {
-            case TypeCode.objectType:                
+            case TypeCode.objectType:
             case TypeCode.mapType:
                 items = this.mapToJson(type as reflection.MapType, itemsToAddOrRemove);
                 break;
-            
+
             case TypeCode.listType:
                 const listType = type as reflection.ListType;
                 const listMapType = hc.getTypeReflection().getMapType(reflection.INTEGER, listType.getCollectionElementType());
@@ -232,7 +241,7 @@ class ManipulationToJson extends Continuation {
                 break;
         }
 
-        return ["@", id, op, {[property]: items}];
+        return ["@", id, op, { [property]: items }];
     }
 
     private owner(m: PropertyManipulation): [id: string, property: string, type: reflection.GenericModelType] {
@@ -247,19 +256,19 @@ class ManipulationToJson extends Continuation {
             return null;
 
         const expert = this.jsonExperts[type.getTypeCode().toString()];
-        
+
         if (!expert)
             // TODO: reasoning
             throw new Error("unkown typecode " + type.getTypeCode());
-        
+
         return expert(value, type);
     }
 
     private jsonExperts: Experts<(v: any, t: reflection.GenericModelType) => any> = {
         objectType: (v, t) => { return this.valueToJson(t.getActualType(v), v); },
-        stringType(v: string): string { return v; },        
-        booleanType(v: boolean): boolean { return v; },        
-        floatType(v: float): FloatTuple { return ["f", v.valueOf()]; },        
+        stringType(v: string): string { return v; },
+        booleanType(v: boolean): boolean { return v; },
+        floatType(v: float): FloatTuple { return ["f", v.valueOf()]; },
         doubleType(v: number): DoubleTuple { return ["d", v]; },
         decimalType(v: decimal): DecimalTuple { return ["D", v.toString()]; },
         integerType(v: integer): integer { return v; },
@@ -272,9 +281,10 @@ class ManipulationToJson extends Continuation {
         setType: (v: set<any>, t) => { return this.setToJson(t as reflection.SetType, v); },
         mapType: (v: map<any, any>, t): CollectionTuple => { return this.mapToJson(t as reflection.MapType, v); },
 
-        dateType(v: date): DateTuple { return ["t", 
-            v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate(),
-            v.getUTCHours(), v.getUTCMinutes(), v.getUTCSeconds(), v.getUTCMilliseconds()];
+        dateType(v: date): DateTuple {
+            return ["t",
+                v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate(),
+                v.getUTCHours(), v.getUTCMinutes(), v.getUTCSeconds(), v.getUTCMilliseconds()];
         },
     }
 
@@ -289,7 +299,7 @@ class ManipulationToJson extends Continuation {
 
             tuple.push(keyJson, valueJson);
         });
-    
+
         return tuple;
 
     }
@@ -317,14 +327,6 @@ class ManipulationToJson extends Continuation {
 
         return tuple;
     }
-}
-
-interface ValueExperts {
-    [key: string]: (json: any) => any;
-}
-
-interface ExValueExperts {
-    [key: string]: (json: any[]) => any;
 }
 
 interface Experts<F> {
@@ -391,6 +393,7 @@ class JsonToManipulation extends Continuation {
             const manipulations = m.compoundManipulationList;
             const adder = manipulations.push.bind(manipulations);
             this.forEachOf(json, j => this.jsonToManipulations(j, adder));
+            consumer(m);
         },
 
         [">"]: (json: any[], consumer: (m: InstantiationManipulation) => void): void => {
@@ -411,7 +414,7 @@ class JsonToManipulation extends Continuation {
             const tuple = json as PropertyRelatedTuple;
             const id = tuple[1];
             const entity = this.entity(id);
-            
+
             const it = tuple[Symbol.iterator]();
 
             // wind iterator two times to move the property manipulation elements
@@ -424,7 +427,7 @@ class JsonToManipulation extends Continuation {
         }
     }
 
-    private decodePropertyOperation(entity: rM.GenericEntity, opTuple: [string,object], consumer: (m: PropertyManipulation) => void): void {
+    private decodePropertyOperation(entity: rM.GenericEntity, opTuple: [string, object], consumer: (m: PropertyManipulation) => void): void {
 
         this.propertyExperts[opTuple[0]](entity, opTuple[1], consumer);
     }
@@ -437,7 +440,7 @@ class JsonToManipulation extends Continuation {
                 const c: lang.Collection<any> = value;
                 const m = new T.Map<any, any>();
                 for (const e of c.iterable())
-                    m.set(e,e);
+                    m.set(e, e);
                 return m;
             }
             default: {
@@ -449,7 +452,7 @@ class JsonToManipulation extends Continuation {
     }
 
     private propertyExperts: Experts<(e: rM.GenericEntity, o: object, consumer: (m: PropertyManipulation) => void) => void> = {
-        
+
         ["="]: (e, o, consumer) => {
             this.forEachOf(Object.entries(o), entry => {
                 const m = ChangeValueManipulation.create();
@@ -459,7 +462,7 @@ class JsonToManipulation extends Continuation {
             });
         },
 
-        ["+"]:(e, o, consumer) => {
+        ["+"]: (e, o, consumer) => {
             this.forEachOf(Object.entries(o), entry => {
                 const m = AddManipulation.create();
                 m.owner = this.entityProperty(e, entry[0]);
@@ -467,11 +470,11 @@ class JsonToManipulation extends Continuation {
                 let type: reflection.GenericModelType;
                 const items = this.jsonToValue(entry[1], t => type = t);
                 m.itemsToAdd = this.mappify(items, type!);
-                
+
                 consumer(m);
             });
         },
-        
+
         ["-"]: (e, o, consumer) => {
             this.forEachOf(Object.entries(o), entry => {
                 const m = RemoveManipulation.create();
@@ -480,7 +483,7 @@ class JsonToManipulation extends Continuation {
                 let type: reflection.GenericModelType;
                 const items = this.jsonToValue(entry[1], t => type = t);
                 m.itemsToRemove = this.mappify(items, type!);
-                
+
                 consumer(m);
             });
         },
@@ -535,7 +538,7 @@ class JsonToManipulation extends Continuation {
             tc?.(reflection.SET);
             const set = new T.Set<any>();
             const it = json[Symbol.iterator]();
-            
+
             // eat up type-code so that only elements remain
             it.next();
 
@@ -545,11 +548,11 @@ class JsonToManipulation extends Continuation {
         },
 
         // decode Map
-        M: (json, tc): map<any,any> => {
+        M: (json, tc): map<any, any> => {
             tc?.(reflection.MAP);
             const map = new T.Map<any, any>();
             const it = json[Symbol.iterator]();
-            
+
             // eat up type-code so that only elements remain
             it.next();
 
@@ -579,7 +582,7 @@ class JsonToManipulation extends Continuation {
         },
 
         e: (json, tc): lang.Enum<any> => {
-            const tuple= json as EnumTuple;
+            const tuple = json as EnumTuple;
             const type = hc.getTypeReflection().getEnumTypeBySignature(tuple[1]);
             tc?.(type);
             return type.findConstant(tuple[2]);
@@ -600,7 +603,7 @@ class PropertyOperationsIterator implements Iterator<[string, object]>, Iterable
 
     next(): IteratorResult<[string, object]> {
         const r = this.it.next();
-            
+
         if (r.done)
             return { done: true, value: undefined };
 
@@ -625,7 +628,7 @@ class PropertyOperationsIterator implements Iterator<[string, object]>, Iterable
 type ManipulationTuple = [man: string, ...args: any];
 type InstantiationTuple = [man: string, id: string, type: string];
 type DeleteTuple = [man: string, id: string];
-type CompoundTuple = [man: string, ...manipulations: ManipulationTuple];
+// type CompoundTuple = [man: string, ...manipulations: ManipulationTuple];
 type ChangeValueTuple = [man: string, id: string, ...changes: any];
 type PropertyRelatedTuple = [man: string, id: string, ...changes: object[]];
 

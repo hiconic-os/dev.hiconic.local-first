@@ -26,7 +26,7 @@ export abstract class Continuation {
     readonly asyncThreshold = 20;
 
     private lastNode: ContinuationQueueNode = new ContinuationQueueNode();
-    private nextNode?: ContinuationTaskNode<any, any>;
+    private nextNode?: ContinuationTaskNode<any>;
     
     private readonly messageChannel = new MessageChannel();
 
@@ -54,7 +54,7 @@ export abstract class Continuation {
         this.forEachOf(iterable.iterable(), consumer);
     }
 
-    private enqueue(task: ContinuationTaskNode<any, any>): void {
+    private enqueue(task: ContinuationTaskNode<any>): void {
         this.lastNode.next = task;
         this.lastNode = task;
 
@@ -107,10 +107,10 @@ export abstract class Continuation {
 }
 
 class ContinuationQueueNode {
-    next?: ContinuationTaskNode<any, any>;
+    next?: ContinuationTaskNode<any>;
 }
 
-class ContinuationTaskNode<E, C> extends ContinuationQueueNode {
+class ContinuationTaskNode<E> extends ContinuationQueueNode {
     readonly it: Iterator<E>;
     readonly consumer: (e: E) => void;
     

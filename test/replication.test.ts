@@ -8,8 +8,8 @@ import * as me from "../src/managed-entities";
 import { generateDataAndReplicate } from "./replication-helper"
 
 
-describe("managed entities", () => {
-  it("manages an entity", async () => {
+describe("replication tests", () => {
+  it("records entitiy creation", async () => {
 
     generateDataAndReplicate(
 

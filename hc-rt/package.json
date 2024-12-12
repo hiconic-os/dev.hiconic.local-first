@@ -2,6 +2,7 @@
     "name": "@dev.hiconic/runtime",
     "version": "1.0.0",
     "type": "module", 
+    "main": "index.js",
     "dependencies": {
       "@dev.hiconic/tf.js_tf-js": "^3.0.145"
     }

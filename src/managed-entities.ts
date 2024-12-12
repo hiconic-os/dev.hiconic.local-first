@@ -1,8 +1,8 @@
-import { eval_, service, session, modelpath, remote, reason, reflection, util, manipulation } from "@dev.hiconic/tf.js_hc-js-api";
+import { session, reflection, util, manipulation } from "@dev.hiconic/tf.js_hc-js-api";
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
 import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer } from "./manipulation-buffer";
-import { PersistentEntityReference, GlobalEntityReference } from "@dev.hiconic/gm_value-descriptor-model";
+import { EntityQuery } from "@dev.hiconic/gm_query-model"
 
 export type { ManipulationBuffer, ManipulationBufferUpdateListener };
 
@@ -15,8 +15,15 @@ export function openEntities(databaseName: string): ManagedEntities {
 }
 
 export type PartialProperties<T> = Partial<
-  Pick<T, { [K in keyof T]: T[K] extends Function ? never : K }[keyof T]>
+  Pick<T, { [K in keyof T]: T[K] extends Function ? never : K extends "globalId" ? never : K }[keyof T]>
 >;
+
+export interface EntityCreationBuilder<E extends rM.GenericEntity> {
+    raw(): EntityCreationBuilder<E>;
+    //get(globalId?: string): E;
+    withId(globalId: string): E
+    withRandomId(): E;
+}
 
 /**
  * Manages entities given by instances {@link rM.GenericEntity GenericEntity} within an in-memory OODB and 
@@ -34,7 +41,7 @@ export interface ManagedEntities {
      * for later committing
      */
     manipulationBuffer: ManipulationBuffer;
-    
+
     /**
      * Creates a {@link ManagedEntities.session|session}-associated {@link rM.GenericEntity entity} with a globalId initialized to a random UUID.
      * The default initializers of the entity will be applied.
@@ -51,6 +58,8 @@ export interface ManagedEntities {
      */
     createRaw<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): E;
 
+    createX<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): EntityCreationBuilder<E>;
+
     /**
      * Deletes an {@link rM.GenericEntity entity} from the {@link ManagedEntities.session|session}.
      * The deletion will be recorded as {@link mM.DeleteManipulation DeleteManipulation}
@@ -64,10 +73,12 @@ export interface ManagedEntities {
      */
     get<E extends rM.GenericEntity>(globalId: string): E;
 
+    list<E extends rM.GenericEntity>(type: reflection.EntityType<E>): E[];
+
     beginCompoundManipulation(): void;
-    
+
     endCompoundManipulation(): void;
-    
+
     compoundManipulation<R>(manipulator: () => R): R;
 
     /**
@@ -111,12 +122,12 @@ class ManagedEntitiesImpl implements ManagedEntities {
     readonly session = new session.BasicManagedGmSession()
 
     readonly manipulationBuffer: SessionManipulationBuffer;
-    
+
     /**
      * The actual transaction backend based on {@link indexedDB}
      */
     databasePromise?: Promise<Database>
-    
+
     /** The id of the last transaction (e.g. from load or commit) for later linkage to a next transaction */
     lastTransactionId?: string
 
@@ -129,24 +140,40 @@ class ManagedEntitiesImpl implements ManagedEntities {
     }
 
     create<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): E {
-        return this.initAndAttach(type.create(), properties);
+        return this.initAndAttach(type, false, properties);
     }
 
     createRaw<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): E {
-        return this.initAndAttach(type.createRaw(), properties);
+        return this.initAndAttach(type, true, properties);
     }
 
-    private initAndAttach<E extends rM.GenericEntity>(entity: E, properties?: PartialProperties<E>): E {
+    createX<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): EntityCreationBuilder<E> {
+        let raw = false;
+        return {
+            raw() {
+                raw = true;
+                return this;
+            },
+            withId: (globalId) => {
+                return this.initAndAttach(type, raw, properties, globalId);
+            },
+            withRandomId: () => {
+                return this.initAndAttach(type, raw, properties);
+            }
+        }
+    }
+
+    private initAndAttach<E extends rM.GenericEntity>(type: reflection.EntityType<E>, raw: boolean, properties?: PartialProperties<E>, globalId?: string): E {
+        const builder = this.session.createEntity(type);
+
+        if (raw)
+            builder?.raw();
+
+        const entity = globalId? builder.global(globalId): builder.globalWithRandomUuid();
+
         if (properties)
-            Object.assign(entity, properties);
-
-        if (!entity.globalId)
-            entity.globalId = util.newUuid();
-
-        const m = mM.InstantiationManipulation.create();
-        m.entity = entity;
-
-        this.session.manipulate().mode(session.ManipulationMode.LOCAL).apply(m);
+            if (properties)
+                Object.assign(entity, properties);
 
         return entity;
     }
@@ -156,7 +183,11 @@ class ManagedEntitiesImpl implements ManagedEntities {
     }
 
     get<E extends rM.GenericEntity>(globalId: string): E {
-        return null! as E; // TODO fix this: this.session.qwe
+        return this.session.getEntitiesView().findEntityByGlobalId(globalId);
+    }
+
+    list<E extends rM.GenericEntity>(type: reflection.EntityType<E>): E[] {
+        return this.session.getEntitiesView().getEntitiesPerType(type).toArray();
     }
 
     beginCompoundManipulation(): void {
@@ -174,7 +205,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
     async selectQuery(statement: string): Promise<session.SelectQueryResultConvenience> {
         return this.session.query().selectString(statement);
     }
-    
+
     async entityQuery(statement: string): Promise<session.EntityQueryResultConvenience> {
         return this.session.query().entitiesString(statement);
     }
@@ -197,7 +228,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
         // get database and fetch all transaction records from it
         let transactions = await (await this.getDatabase()).fetch()
         transactions = this.orderByDependency(transactions)
-        
+
         this.manipulationBuffer.clear();
         this.manipulationBuffer.suspendTracking();
         try {
@@ -226,7 +257,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
         transaction.diff = diff
         transaction.date = new Date().getTime()
         transaction.deps = []
-        
+
         // link the transaction to a previous one if present
         if (this.lastTransactionId !== undefined)
             transaction.deps.push(this.lastTransactionId)
@@ -236,7 +267,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
         // clear the manipulations as they are persisted
         this.manipulationBuffer.clear();
-        
+
         // store the id of the appended transaction as latest transaction id
         this.lastTransactionId = transaction.id
     }
@@ -251,7 +282,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
     private orderByDependency(transactions: Transaction[]): Transaction[] {
         const index = new Map<string, Transaction>();
-        
+
         for (const t of transactions) {
             index.set(t.id, t)
         }
@@ -310,9 +341,9 @@ class Database {
     static async open(databaseName: string): Promise<Database> {
         return new Promise((resolve, reject) => {
             const request = indexedDB.open("event-source-db", 2);
-            
-            request.onupgradeneeded = () => Database.init(databaseName,request.result);
-            
+
+            request.onupgradeneeded = () => Database.init(databaseName, request.result);
+
             request.onsuccess = () => {
                 const db = new Database(databaseName, request.result);
                 resolve(db)
@@ -326,14 +357,14 @@ class Database {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction([this.databaseName], 'readonly');
             const objectStore = transaction.objectStore(this.databaseName);
-    
+
             const request = objectStore.getAll();
-            const transactions = new Array<Transaction>();
 
             request.onsuccess = () => {
+                // automatically casting result to Transaction[] as we know this is the content of the db
                 resolve(request.result)
             }
-    
+
             request.onerror = () => reject(request.error)
         });
     }
@@ -342,13 +373,13 @@ class Database {
         return new Promise((resolve, reject) => {
             const dbTransaction = this.db.transaction([this.databaseName], 'readwrite');
             const objectStore = dbTransaction.objectStore(this.databaseName);
-    
+
             const request = objectStore.add(transaction)
-            
+
             request.onsuccess = () => {
                 resolve();
             }
-    
+
             request.onerror = () => reject(request.error)
         });
     }
@@ -358,6 +389,4 @@ class Database {
             db.createObjectStore(databaseName, { keyPath: 'id' });
         }
     }
-
-
 }
