@@ -19,8 +19,7 @@
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vite-plugin-solid": "^2.11.0",
-    "vitest": "^2.1.6",
-    "vitest-sonar-reporter": "^2.0.0"
+    "vitest": "^2.1.6"
   },
   "source": "src/local-first.ts",
   "main": "dist/local-first.js",

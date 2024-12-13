@@ -11,7 +11,7 @@ export default defineConfig({
     environment: 'jsdom',
     reporters: [
       'default',
-      ['vitest-sonar-reporter', {
+      ['junit', {
         outputFile: 'junit.xml', // Path for the JUnit XML report
       }],
     ],
