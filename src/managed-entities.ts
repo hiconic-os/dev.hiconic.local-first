@@ -2,7 +2,6 @@ import { session, reflection, util, manipulation } from "@dev.hiconic/tf.js_hc-j
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
 import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer } from "./manipulation-buffer";
-import { EntityQuery } from "@dev.hiconic/gm_query-model"
 
 export type { ManipulationBuffer, ManipulationBufferUpdateListener };
 

@@ -532,17 +532,64 @@
   resolved "https://registry.yarnpkg.com/@dev.hiconic/hc-js-base/-/hc-js-base-2.0.3.tgz#8747af0b9dadb426959aeb54290edc5c9a2afbc5"
   integrity sha512-Yym/1uANFlqTFa2A7N6ekcnwr7bc1j2ox+XHKBaZBBL8A19DYb092GkGpy/nI/vBC159mkgasvUvkskZb/XiBQ==
 
+"@dev.hiconic/runtime@3.0.x":
+  version "3.0.151"
+  resolved "https://registry.yarnpkg.com/@dev.hiconic/runtime/-/runtime-3.0.151.tgz#a0d9c0c72299752469c42e6cf1fbe7117669fb04"
+  integrity sha512-wzWNjRBFiBTV6z0BTcUuMSnkv79h4dJRnXXxNSHBb2O++176m6e+iZPTdI0KVG/DrEhSwXqkDIM8guW2/ZwLzQ==
+  dependencies:
+    "@dev.hiconic/gm_absence-information-model" "2.0.x"
+    "@dev.hiconic/gm_access-api-model" "2.0.x"
+    "@dev.hiconic/gm_access-control-model" "2.0.x"
+    "@dev.hiconic/gm_access-request-model" "2.0.x"
+    "@dev.hiconic/gm_basic-resource-model" "2.0.x"
+    "@dev.hiconic/gm_basic-value-descriptor-model" "2.0.x"
+    "@dev.hiconic/gm_cache-control-model" "2.0.x"
+    "@dev.hiconic/gm_descriptive-model" "2.0.x"
+    "@dev.hiconic/gm_essential-meta-data-model" "2.0.x"
+    "@dev.hiconic/gm_gm-core-api" "2.0.x"
+    "@dev.hiconic/gm_i18n-model" "2.0.x"
+    "@dev.hiconic/gm_icon-model" "2.0.x"
+    "@dev.hiconic/gm_logging-model" "2.0.x"
+    "@dev.hiconic/gm_manipulation-model" "2.0.x"
+    "@dev.hiconic/gm_meta-data-model" "2.0.x"
+    "@dev.hiconic/gm_meta-model" "2.0.x"
+    "@dev.hiconic/gm_meta-model-api-model" "2.0.x"
+    "@dev.hiconic/gm_model-accessory-api-model" "2.0.x"
+    "@dev.hiconic/gm_model-path-model" "2.0.x"
+    "@dev.hiconic/gm_owner-model" "2.0.x"
+    "@dev.hiconic/gm_pagination-model" "2.0.x"
+    "@dev.hiconic/gm_persistence-reflection-api-model" "2.0.x"
+    "@dev.hiconic/gm_query-model" "2.0.x"
+    "@dev.hiconic/gm_query-plan-model" "2.0.x"
+    "@dev.hiconic/gm_reason-model" "2.0.x"
+    "@dev.hiconic/gm_record-model" "2.0.x"
+    "@dev.hiconic/gm_resource-api-model" "2.0.x"
+    "@dev.hiconic/gm_resource-model" "2.0.x"
+    "@dev.hiconic/gm_root-model" "2.0.x"
+    "@dev.hiconic/gm_selector-model" "2.0.x"
+    "@dev.hiconic/gm_service-api-model" "2.0.x"
+    "@dev.hiconic/gm_service-value-descriptor-model" "2.0.x"
+    "@dev.hiconic/gm_template-model" "2.0.x"
+    "@dev.hiconic/gm_time-model" "2.0.x"
+    "@dev.hiconic/gm_transient-resource-model" "2.0.x"
+    "@dev.hiconic/gm_traversing-criteria-model" "2.0.x"
+    "@dev.hiconic/gm_type-condition-model" "2.0.x"
+    "@dev.hiconic/gm_user-model" "2.0.x"
+    "@dev.hiconic/gm_user-session-model" "2.0.x"
+    "@dev.hiconic/gm_value-descriptor-model" "2.0.x"
+    "@dev.hiconic/tf.js_model-path-aux-model" "3.0.x"
+
 "@dev.hiconic/runtime@file:./hc-rt":
   version "1.0.0"
   dependencies:
     "@dev.hiconic/tf.js_tf-js" "^3.0.145"
 
 "@dev.hiconic/tf.js_hc-js-api@^3.0.10":
-  version "3.0.11"
-  resolved "https://registry.yarnpkg.com/@dev.hiconic/tf.js_hc-js-api/-/tf.js_hc-js-api-3.0.11.tgz#ab5c17e3fd997e26b9668e84f0247aabb63cf672"
-  integrity sha512-wIzphp/lFVCiQtt6pPcdTQmUapthPXCaXCE8uAQH+82M6VRNtm4b60GB2T4RNC40qyfVCVDUJ+Gf4JVCeH8pYw==
+  version "3.0.13"
+  resolved "https://registry.yarnpkg.com/@dev.hiconic/tf.js_hc-js-api/-/tf.js_hc-js-api-3.0.13.tgz#b9e30d212cf53530b3c3ae1f7fc87039d7f7a062"
+  integrity sha512-aMJJwOp30PokyK28JIacpbWs5/oyDdmM7ojUI2vM4/8FTx1eixg/EITzd/W5h5+Ee3/5Z7Mt6QcIIftzLKvRIw==
   dependencies:
-    "@dev.hiconic/tf.js_tf-js" "3.0.x"
+    "@dev.hiconic/runtime" "3.0.x"
 
 "@dev.hiconic/tf.js_model-path-aux-model@3.0.x":
   version "3.0.4"
@@ -552,10 +599,10 @@
     "@dev.hiconic/gm_gm-core-api" "2.0.x"
     "@dev.hiconic/gm_root-model" "2.0.x"
 
-"@dev.hiconic/tf.js_tf-js@3.0.x", "@dev.hiconic/tf.js_tf-js@^3.0.145":
-  version "3.0.150"
-  resolved "https://registry.yarnpkg.com/@dev.hiconic/tf.js_tf-js/-/tf.js_tf-js-3.0.150.tgz#ffc3388574d1b38591d277244853cecc0ea9da94"
-  integrity sha512-rimCWHosch35ntIqKBGIuhoxfY5pZW2L1OTpMQjWnBeQVqcovn+PVNPO1vyM5ehcdhIsTDUqUxen5WWGd0AShQ==
+"@dev.hiconic/tf.js_tf-js@^3.0.145":
+  version "3.0.151"
+  resolved "https://registry.yarnpkg.com/@dev.hiconic/tf.js_tf-js/-/tf.js_tf-js-3.0.151.tgz#a77c06e9ccd121cdf269ab36f54ca705a1816fc5"
+  integrity sha512-RbzvG9N+mThtqPSIIjqXBhQxzqw0yxh2gPUzUDedimsYNjGFBNQAoJ6W4RdM9E3s7qYCzglNOwdhF0ip8aVElQ==
   dependencies:
     "@dev.hiconic/gm_absence-information-model" "2.0.x"
     "@dev.hiconic/gm_access-api-model" "2.0.x"
