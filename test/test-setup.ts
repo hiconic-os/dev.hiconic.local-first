@@ -1,0 +1,1 @@
+import 'fake-indexeddb/auto'; // Automatically mocks the global IndexedDB API

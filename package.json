@@ -5,17 +5,22 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "vitest --run"
+    "test-watch": "vitest",
+    "test": "vitest --run --config vitest.solid.config.ts",
+    "test-no-solid": "vitest --run --config vitest.config.ts"
   },
   "keywords": [],
   "author": "Dirk Scheffler",
   "license": "Apache-2.0",
   "dependencies": {
     "@dev.hiconic/tf.js_hc-js-api": "^3.0.10",
+    "crypto-js": "^4.2.0",
     "solid-js": "^1.9.3"
   },
   "devDependencies": {
     "@dev.hiconic/runtime": "file:./hc-rt",
+    "@types/crypto-js": "^4.2.2",
+    "fake-indexeddb": "^6.0.0",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
     "vite-plugin-solid": "^2.11.0",

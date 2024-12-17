@@ -5,23 +5,39 @@ import * as mm from "@dev.hiconic/gm_manipulation-model"
 import { reflection as refl, T } from "@dev.hiconic/tf.js_hc-js-api";
 import * as me from "../src/managed-entities";
 
-import { generateDataAndReplicate } from "./replication-helper"
+import { generateReplication } from "./replication-helper"
 
 
 describe("replication tests", () => {
-  it("records entitiy creation", async () => {
+  it("stores and loads a transaction in indexedDB", async () => {
 
-    generateDataAndReplicate(
+    const globalId = "abc";
+    let resource: Resource;
 
-      entities => {
-        const r1 = entities.create(Resource, { globalId: "abc"});
-        const r2 = entities.create(Resource, { globalId: "xyz"})
+    await generateReplication()
 
-        return [r1, r2];
-      },
+      .addTransaction(entities => {
+        resource = entities.createX(Resource).withId(globalId);
+        resource.name = "Test Resource";
+        resource.mimeType = "text/plain";
 
-      (original, replicated, data, replicatedData) => {
-      }
-    );
+        return { name: "person1", address: "p3r50n1" }
+      })
+
+      .addTransaction(entities => {
+        resource.tags.add("one");
+        resource.tags.add("two");
+
+        return { name: "person2", address: "p3r50n2" }
+      })
+      
+      .replicate((original, replicated) => {
+        const replicatedResource: Resource = replicated.get(globalId);
+
+        expect(replicatedResource.name).toBe(resource.name);
+        expect(replicatedResource.mimeType).toBe(resource.mimeType);
+        expect(replicatedResource.tags.has("one")).toBeTruthy();
+        expect(replicatedResource.tags.has("two")).toBeTruthy();
+      });
   });
 });

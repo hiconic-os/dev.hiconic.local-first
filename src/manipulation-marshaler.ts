@@ -21,7 +21,7 @@ import TypeCode = reflection.TypeCode
 
 export class ManipulationMarshaller {
 
-    async marshalToString(manipulations: Manipulation[]): Promise<string> {
+    async marshalToString(manipulations: Manipulation[], meta?: object): Promise<string> {
         const json = await this.marshalToJson(manipulations);
         const s = await new JsonStringifier().stringify(json);
         return s;
@@ -333,6 +333,8 @@ interface Experts<F> {
     [key: string]: F;
 }
 
+type ValueWithType<V> = [value: V, type: reflection.GenericModelType]; 
+
 class JsonToManipulation extends Continuation {
     private entities = new Map<string, rM.GenericEntity>();
 
@@ -356,10 +358,9 @@ class JsonToManipulation extends Continuation {
         this.manipulationExperts[op](json, consumer);
     }
 
-    private jsonToValue(json: any, typeConsumer?: (type: reflection.GenericModelType) => void): any {
+    private jsonToValue(json: any): ValueWithType<any> {
         if (json == null) {
-            typeConsumer?.(reflection.OBJECT);
-            return null;
+            return [null, reflection.OBJECT];
         }
 
         return this.valueExperts[typeof json](json);
@@ -399,7 +400,7 @@ class JsonToManipulation extends Continuation {
         [">"]: (json: any[], consumer: (m: InstantiationManipulation) => void): void => {
             const tuple = json as InstantiationTuple;
             const m = InstantiationManipulation.create();
-            m.entity = this.entity(tuple[2], tuple[1]);
+            m.entity = this.entity(tuple[1], tuple[2]);
             consumer(m);
         },
 
@@ -437,9 +438,9 @@ class JsonToManipulation extends Continuation {
             case TypeCode.mapType: return value;
             case TypeCode.setType:
             case TypeCode.listType: {
-                const c: lang.Collection<any> = value;
+                const c: Iterable<any> = value;
                 const m = new T.Map<any, any>();
-                for (const e of c.iterable())
+                for (const e of c)
                     m.set(e, e);
                 return m;
             }
@@ -457,7 +458,7 @@ class JsonToManipulation extends Continuation {
             this.forEachOf(Object.entries(o), entry => {
                 const m = ChangeValueManipulation.create();
                 m.owner = this.entityProperty(e, entry[0]);
-                m.newValue = this.jsonToValue(entry[1]);
+                m.newValue = this.jsonToValue(entry[1])[0];
                 consumer(m);
             });
         },
@@ -467,9 +468,9 @@ class JsonToManipulation extends Continuation {
                 const m = AddManipulation.create();
                 m.owner = this.entityProperty(e, entry[0]);
 
-                let type: reflection.GenericModelType;
-                const items = this.jsonToValue(entry[1], t => type = t);
-                m.itemsToAdd = this.mappify(items, type!);
+                const [items, type] = this.jsonToValue(entry[1]);
+
+                this.runAfterPending(() => m.itemsToAdd = this.mappify(items, type!));
 
                 consumer(m);
             });
@@ -480,10 +481,9 @@ class JsonToManipulation extends Continuation {
                 const m = RemoveManipulation.create();
                 m.owner = this.entityProperty(e, entry[0]);
 
-                let type: reflection.GenericModelType;
-                const items = this.jsonToValue(entry[1], t => type = t);
-                m.itemsToRemove = this.mappify(items, type!);
-
+                const [items, type] = this.jsonToValue(entry[1]);
+                this.runAfterPending(() => m.itemsToRemove = this.mappify(items, type!));
+                
                 consumer(m);
             });
         },
@@ -499,27 +499,25 @@ class JsonToManipulation extends Continuation {
         },
     }
 
-    private valueExperts: Experts<(json: any, typeConsumer?: (type: reflection.GenericModelType) => void) => any> = {
-        string(json, tc): string { tc?.(reflection.STRING); return json; },
-        boolean(json, tc): boolean { tc?.(reflection.BOOLEAN); return json; },
-        number(json, tc): number { tc?.(reflection.INTEGER); return json; },
-        object: (json, tc): any => {
+    private valueExperts: Experts<(json: any) => ValueWithType<any>> = {
+        string(json): ValueWithType<string> { return [json, reflection.STRING]; },
+        boolean(json): ValueWithType<boolean> { return [json, reflection.BOOLEAN]; },
+        number(json): ValueWithType<number> { return [json, reflection.INTEGER]; },
+        object: (json): ValueWithType<any> => {
             const op: string = json[0];
-            return this.exValueExperts[op](json, tc);
+            return this.exValueExperts[op](json);
         }
     }
 
-    private exValueExperts: Experts<(json: any[], typeConsumer?: (type: reflection.GenericModelType) => void) => any> = {
+    private exValueExperts: Experts<(json: any[]) => ValueWithType<any>> = {
         // base types: f = float, d = double, l = long,
-        f(json, tc): float { tc?.(reflection.FLOAT); return new T.Float((json as FloatTuple)[1]); },
-        d(json, tc): double { tc?.(reflection.DOUBLE); return new T.Double((json as DoubleTuple)[1]); },
-        l(json, tc): long { tc?.(reflection.LONG); return BigInt((json as LongTuple)[1]); },
-        D(json, tc): decimal { tc?.(reflection.DECIMAL); return math.bigDecimalFromString((json as DecimalTuple)[1]); },
-        t(json, tc): date { tc?.(reflection.DATE); return new Date(Date.UTC.apply(null, json.slice(1) as [number, number, number, number, number, number, number])); },
+        f(json): ValueWithType<float> { return [new T.Float((json as FloatTuple)[1]), reflection.FLOAT]; },
+        d(json): ValueWithType<double> { return [new T.Double((json as DoubleTuple)[1]), reflection.DOUBLE]; },
+        l(json): ValueWithType<long> { return [BigInt((json as LongTuple)[1]), reflection.LONG]; },
+        D(json): ValueWithType<decimal> { return [math.bigDecimalFromString((json as DecimalTuple)[1]), reflection.DECIMAL]; },
+        t(json): ValueWithType<date> { return [new Date(Date.UTC.apply(null, json.slice(1) as [number, number, number, number, number, number, number])), reflection.DATE]; },
 
-        L: (json, tc): list<any> => {
-            tc?.(reflection.LIST);
-
+        L: (json): ValueWithType<list<any>> => {
             T.Decimal
 
             const list = new T.Array<any>();
@@ -528,28 +526,26 @@ class JsonToManipulation extends Continuation {
             // eat up type-code so that only elements remain
             it.next();
 
-            this.forEachOf(it, e => list.push(this.jsonToValue(e)));
+            this.forEachOf(it, e => list.push(this.jsonToValue(e)[0]));
 
-            return list;
+            return [list, reflection.LIST];
         },
 
         // decode Set
-        S: (json, tc): set<any> => {
-            tc?.(reflection.SET);
+        S: (json): ValueWithType<set<any>> => {
             const set = new T.Set<any>();
             const it = json[Symbol.iterator]();
 
             // eat up type-code so that only elements remain
             it.next();
 
-            this.forEachOf(it, e => set.add(this.jsonToValue(e)));
+            this.forEachOfIterator(it, e => set.add(this.jsonToValue(e)[0]));
 
-            return set;
+            return [set, reflection.SET];
         },
 
         // decode Map
-        M: (json, tc): map<any, any> => {
-            tc?.(reflection.MAP);
+        M: (json): ValueWithType<map<any, any>> => {
             const map = new T.Map<any, any>();
             const it = json[Symbol.iterator]();
 
@@ -558,34 +554,32 @@ class JsonToManipulation extends Continuation {
 
             let key: any | undefined = undefined;
 
-            this.forEachOf(it, e => {
+            this.forEachOfIterator(it, e => {
                 if (key === undefined) {
-                    key = this.jsonToValue(e);
+                    [key] = this.jsonToValue(e);
                 }
                 else {
-                    const value = this.jsonToValue(e);
+                    const [value] = this.jsonToValue(e);
                     map.set(key, value);
                     key = undefined;
                 }
             });
 
-            return map;
+            return [map, reflection.MAP];
         },
 
-        E: (json, tc): rM.GenericEntity => {
+        E: (json): ValueWithType<rM.GenericEntity> => {
             const id = (json as EntityTuple)[1];
             const ref = vM.GlobalEntityReference.create();
             ref.refId = id;
             ref.typeSignature = rM.GenericEntity.getTypeSignature();
-            tc?.(rM.GenericEntity);
-            return ref;
+            return [ref, rM.GenericEntity];
         },
 
-        e: (json, tc): lang.Enum<any> => {
+        e: (json): ValueWithType<lang.Enum<any>> => {
             const tuple = json as EnumTuple;
             const type = hc.getTypeReflection().getEnumTypeBySignature(tuple[1]);
-            tc?.(type);
-            return type.findConstant(tuple[2]);
+            return [type.findConstant(tuple[2]), type];
         },
     }
 }

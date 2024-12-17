@@ -1,7 +1,9 @@
-import { session, reflection, util, manipulation } from "@dev.hiconic/tf.js_hc-js-api";
+import { session, reflection, util } from "@dev.hiconic/tf.js_hc-js-api";
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
 import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer } from "./manipulation-buffer";
+import { ManipulationMarshaller } from "./manipulation-marshaler";
+
 
 export type { ManipulationBuffer, ManipulationBufferUpdateListener };
 
@@ -9,20 +11,84 @@ export type { ManipulationBuffer, ManipulationBufferUpdateListener };
  * Opens a {@link ManagedEntities} instance backed by the indexedDB named "event-source-db".
  * @param databaseName name of the ObjectStore used as space for the stored events
  */
-export function openEntities(databaseName: string): ManagedEntities {
-    return new ManagedEntitiesImpl(databaseName)
+export function openEntities(databaseName: string, security?: ManagedEntitiesSecurity): ManagedEntities {
+    return new ManagedEntitiesImpl(databaseName, security)
 }
 
+/** Restricts string literals to the existing properties of a type excluding globalID */
 export type PartialProperties<T> = Partial<
   Pick<T, { [K in keyof T]: T[K] extends Function ? never : K extends "globalId" ? never : K }[keyof T]>
 >;
 
+/**
+ * Optional security for managed entities
+ */
+export interface ManagedEntitiesSecurity {
+    /**
+     * Asynchronously signs a data (most likely involving some UI interaction for the user)
+     * @param data the data to be signed
+     */
+    sign(data: string, signerAddress: string): Promise<string>;
+
+    /**
+     * Checks the signature for a data
+     * @param data the hash the signature was allegedly made for
+     * @param signature the signature for the hash to be checked
+     */
+    check(data: string, signature: string, signerAddress: string): Promise<boolean>;
+
+    /**
+     * Creates a hash for arbitrary string content. The hash could be used for signing.
+     * @param data the data to be hashed
+     */
+    hash(data: string): string;
+
+    /**
+     * Asynchronously encrypts data which maybe involve interaction with a wallet or entering a passphrase
+     * @param data the data to be encrypted
+     */
+    encrypt(data: string, signerAddress: string): Promise<string>;
+
+    /**
+     * Asynchronously decrypts data which maybe involve interaction with a wallet or entering a passphrase
+     * @param data the data to be encrypted
+     */
+    decrypt(data: string, signerAddress: string): Promise<string>;
+}
+
+/**
+ * 
+ */
 export interface EntityCreationBuilder<E extends rM.GenericEntity> {
+    /** The entity will be created without initializers being applied */
     raw(): EntityCreationBuilder<E>;
-    //get(globalId?: string): E;
+
+    /** Creates the entity with an explicit globalId */
     withId(globalId: string): E
+
+    /** Creates the entity with a randomly generated UUID as globalId */
     withRandomId(): E;
 }
+
+export interface Signer {
+    name?: string;
+    address: string;
+}
+
+/**
+ * Describes a transaction that is modelled in a way that it can be stored as JSON-like structure in the {@link indexedDB}
+ */
+interface Transaction {
+    version: number;
+    deps: string[];
+    id: string;
+    diff: string | [];
+    date: number;
+    hash: string;
+    signer?: Signer;
+    signature: string;
+}
+
 
 /**
  * Manages entities given by instances {@link rM.GenericEntity GenericEntity} within an in-memory OODB and 
@@ -93,7 +159,7 @@ export interface ManagedEntities {
     /**
      * Persists the recorded and collected {@link mM.Manipulation manipulations} by appending them as a transaction to the event-source persistence.
      */
-    commit(): Promise<void>;
+    commit(signer?: Signer): Promise<void>;
 
     /**
      * Builds a select query from a GMQL select query statement which can then be equipped with variable values and executed.
@@ -133,9 +199,13 @@ class ManagedEntitiesImpl implements ManagedEntities {
     /** The name of the ObjectStore used to fetch and append transaction */
     databaseName: string
 
-    constructor(databaseName: string) {
+    /** The optional signature service that ensures authenticity of transactions */
+    security?: ManagedEntitiesSecurity;
+
+    constructor(databaseName: string, security?: ManagedEntitiesSecurity) {
         this.databaseName = databaseName
         this.manipulationBuffer = new SessionManipulationBuffer(this.session);
+        this.security = security;
     }
 
     create<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): E {
@@ -232,8 +302,27 @@ class ManagedEntitiesImpl implements ManagedEntities {
         this.manipulationBuffer.suspendTracking();
         try {
             for (const t of transactions) {
-                const m = await manipulation.ManipulationSerialization.deserializeManipulation(t.diff);
-                this.session.manipulate().mode(session.ManipulationMode.REMOTE).apply(m)
+                const marshaller = new ManipulationMarshaller();
+                let diffAsStr = t.diff as string;
+
+                if (this.security) {
+                    const signerAddress = t.signer.address;
+                    diffAsStr = await this.security.decrypt(diffAsStr, signerAddress);
+                    if (!await this.security.check(diffAsStr, t.signature, signerAddress))
+                        // TODO: turn this into proper reasoning
+                        throw new Error("wrong signature");
+                }
+
+                const deserTransaction = JSON.parse(diffAsStr) as Transaction;
+
+                // TODO: check transaction fields for equality as additional check
+
+                const diff = deserTransaction.diff as [];
+                const manis = await marshaller.unmarshalFromJson(diff)
+                const manipulator = this.session.manipulate().mode(session.ManipulationMode.REMOTE_GLOBAL);
+                for (const manipulation of manis) {
+                    manipulator.apply(manipulation);
+                }
             }
         }
         finally {
@@ -245,21 +334,41 @@ class ManagedEntitiesImpl implements ManagedEntities {
             this.lastTransactionId = transactions[transactions.length - 1].id
     }
 
-    async commit(): Promise<void> {
+    async commit(signer?: Signer): Promise<void> {
         const manis = this.manipulationBuffer.getCommitManipulations();
         // serialize the manipulations (currently as XML)
-        const diff = await manipulation.ManipulationSerialization.serializeManipulations(manis, true)
+        const marshaller = new ManipulationMarshaller();
+        const serManis = await marshaller.marshalToString(manis);
 
         // build a transaction record equipped with a new UUID, date and the serialized manipulations
         const transaction = {} as Transaction
-        transaction.id = util.newUuid()
-        transaction.diff = diff
-        transaction.date = new Date().getTime()
-        transaction.deps = []
+
+        transaction.version = 1;
+        transaction.id = util.newUuid();
+        transaction.date = new Date().getTime();
+        transaction.deps = [];
+        transaction.signer = signer;
 
         // link the transaction to a previous one if present
         if (this.lastTransactionId !== undefined)
             transaction.deps.push(this.lastTransactionId)
+        
+        let diff = this.enrich(transaction, serManis);
+
+        if (this.security) {
+            if (!signer) 
+                throw new Error("signer argument is required when working with security");
+
+            const hash = this.security.hash(diff);
+            const signature = await this.security.sign(diff, signer.address);
+            diff = await this.security.encrypt(diff, signer.address);
+            transaction.signature = signature;
+            transaction.hash = hash;
+        }
+
+        transaction.diff = diff;
+
+        console.log(transaction);
 
         // append the transaction record to the database
         await (await this.getDatabase()).append(transaction)
@@ -269,6 +378,29 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
         // store the id of the appended transaction as latest transaction id
         this.lastTransactionId = transaction.id
+    }
+
+    private enrich(transaction: Transaction, serManis: string): string {
+        const builder: string[] = [];
+
+        builder.push("{")
+
+        for (const [key, value] of Object.entries(transaction)) {
+            builder.push('"');
+            builder.push(key);
+            builder.push('"');
+            builder.push(": ");
+            builder.push(JSON.stringify(value));
+            builder.push(", ");
+        }
+
+        builder.push('"diff": ');
+        builder.push(serManis);
+        builder.push("}");
+
+        const diff = builder.join("");
+
+        return diff;
     }
 
     private async getDatabase(): Promise<Database> {
@@ -310,16 +442,6 @@ class ManagedEntitiesImpl implements ManagedEntities {
         collect.push(transaction)
     }
 
-}
-
-/**
- * Describes a transaction that is modelled in a way that it can be stored as JSON-like structure in the {@link indexedDB}
- */
-interface Transaction {
-    deps: string[]
-    id: string
-    diff: string
-    date: number
 }
 
 /**

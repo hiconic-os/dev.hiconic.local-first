@@ -54,6 +54,10 @@ export abstract class Continuation {
         this.forEachOf(iterable.iterable(), consumer);
     }
 
+    protected runAfterPending(task: () => void) {
+        this.forEachOfIterator(function *() { yield undefined }(), task);
+    }
+
     private enqueue(task: ContinuationTaskNode<any>): void {
         this.lastNode.next = task;
         this.lastNode = task;

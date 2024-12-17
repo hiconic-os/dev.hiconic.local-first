@@ -1,40 +1,48 @@
 import * as me from "../src/managed-entities";
+import { MockSignatureService } from "../src/crypto"
 import { GenericEntity } from "@dev.hiconic/gm_root-model"
 import { ManipulationMarshaller } from "../src/manipulation-marshaler";
 
 export type GmData<T extends GenericEntity> = T | T[] | undefined
-export type DataGenerator<E extends GenericEntity, D extends GmData<E>> = (entities: me.ManagedEntities) => D;
-export type DataTester<E extends GenericEntity, D extends GmData<E>> = (original: me.ManagedEntities, replicated: me.ManagedEntities, data: D, replicatedData: D) => void;
+export type DataGenerator = (entities: me.ManagedEntities) => me.Signer;
+export type DataTester = (original: me.ManagedEntities, replicated: me.ManagedEntities) => void;
 
-export async function generateDataAndReplicate<E extends GenericEntity, D extends GmData<E>>(generator: DataGenerator<E, D>, tester: DataTester<E, D>): Promise<void> {
-    const original = me.openEntities("test");
-    const data = generator(original);
+export interface ReplicationTestBuilder {
+    addTransaction(generator: DataGenerator): ReplicationTestBuilder;
+    replicate(tester: DataTester): Promise<void>
+}
 
-    const manipulations = original.manipulationBuffer.getCommitManipulations();
-    const marshaler = new ManipulationMarshaller();
-    const jsonAsStr = await marshaler.marshalToString(manipulations);
-    const replicatedManipulations = await marshaler.unmarshalFromString(jsonAsStr)
-
-    const replicated = me.openEntities("test");
-
-    let replicatedData: D;
-
-    if (data) {
-        if (Array.isArray(data)) {
-            const entityArray = data as E[];
-
-            replicatedData = undefined as D;
-        }
-        else {
-            const entity = data as E;
-
-            const replicatedEntity = replicated.get(entity.globalId);
-            replicatedData = replicatedEntity as D;
-        }
+class BrokenSignatureService extends MockSignatureService {
+    async check(data: string, signature: string, signerAddress: string): Promise<boolean> {
+        return false;
     }
-    else {
-        replicatedData = undefined as D;
-    }
+}
 
-    tester(original, replicated, data, replicatedData);
+const security = new MockSignatureService();
+
+export function generateReplication(): ReplicationTestBuilder {
+    const generators: DataGenerator[] = [];
+
+    return {
+        addTransaction(generator) {
+            generators.push(generator);
+            return this;
+        },
+        async replicate(tester) {
+            const original = me.openEntities("test");
+
+            for (const generator of generators) {
+                const signer = generator(original);
+                await original.commit(signer);
+            }
+
+            const replicated = me.openEntities("test");
+            
+            await replicated.load();
+        
+            tester(original, replicated);
+
+            return;
+        },
+    }
 }
