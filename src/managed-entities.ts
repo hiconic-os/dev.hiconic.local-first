@@ -306,7 +306,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
                 let diffAsStr = t.diff as string;
 
                 if (this.security) {
-                    const signerAddress = t.signer.address;
+                    const signerAddress = t.signer!.address;
                     diffAsStr = await this.security.decrypt(diffAsStr, signerAddress);
                     if (!await this.security.check(diffAsStr, t.signature, signerAddress))
                         // TODO: turn this into proper reasoning

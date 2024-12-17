@@ -21,7 +21,7 @@ import TypeCode = reflection.TypeCode
 
 export class ManipulationMarshaller {
 
-    async marshalToString(manipulations: Manipulation[], meta?: object): Promise<string> {
+    async marshalToString(manipulations: Manipulation[]): Promise<string> {
         const json = await this.marshalToJson(manipulations);
         const s = await new JsonStringifier().stringify(json);
         return s;
