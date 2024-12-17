@@ -13,7 +13,7 @@ export interface ReplicationTestBuilder {
 }
 
 class BrokenSignatureService extends MockSignatureService {
-    async check(data: string, signature: string, signerAddress: string): Promise<boolean> {
+    async verify(data: string, signature: string, signerAddress: string): Promise<boolean> {
         return false;
     }
 }

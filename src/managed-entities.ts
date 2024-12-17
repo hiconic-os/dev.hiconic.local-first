@@ -31,11 +31,11 @@ export interface ManagedEntitiesSecurity {
     sign(data: string, signerAddress: string): Promise<string>;
 
     /**
-     * Checks the signature for a data
+     * Verifies the signature for a data
      * @param data the hash the signature was allegedly made for
-     * @param signature the signature for the hash to be checked
+     * @param signature the signature for the hash to be verified
      */
-    check(data: string, signature: string, signerAddress: string): Promise<boolean>;
+    verify(data: string, signature: string, signerAddress: string): Promise<boolean>;
 
     /**
      * Creates a hash for arbitrary string content. The hash could be used for signing.
@@ -308,7 +308,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
                 if (this.security) {
                     const signerAddress = t.signer!.address;
                     diffAsStr = await this.security.decrypt(diffAsStr, signerAddress);
-                    if (!await this.security.check(diffAsStr, t.signature, signerAddress))
+                    if (!await this.security.verify(diffAsStr, t.signature, signerAddress))
                         // TODO: turn this into proper reasoning
                         throw new Error("wrong signature");
                 }

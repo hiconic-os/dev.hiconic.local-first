@@ -70,7 +70,7 @@ export class MockSignatureService implements ManagedEntitiesSecurity {
     return this.hash(signerAddress + ":" + data);
   }
 
-  async check(data: string, signature: string, signerAddress: string): Promise<boolean> {
+  async verify(data: string, signature: string, signerAddress: string): Promise<boolean> {
     // Erzeugt denselben MD5-Hash und vergleicht ihn
     const expectedHash = this.hash(signerAddress + ":" + data);
     return signature === expectedHash;
