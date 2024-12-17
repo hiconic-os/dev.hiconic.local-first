@@ -41,7 +41,7 @@ export interface ManagedEntitiesSecurity {
      * Creates a hash for arbitrary string content. The hash could be used for signing.
      * @param data the data to be hashed
      */
-    hash(data: string): string;
+    hash(data: string): Promise<string>;
 
     /**
      * Asynchronously encrypts data which maybe involve interaction with a wallet or entering a passphrase
@@ -359,7 +359,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
             if (!signer) 
                 throw new Error("signer argument is required when working with security");
 
-            const hash = this.security.hash(diff);
+            const hash = await this.security.hash(diff);
             const signature = await this.security.sign(diff, signer.address);
             diff = await this.security.encrypt(diff, signer.address);
             transaction.signature = signature;
