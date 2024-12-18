@@ -3,7 +3,7 @@ import { Resource } from "@dev.hiconic/gm_resource-model"
 import * as mm from "@dev.hiconic/gm_manipulation-model"
 import * as me from "../src/managed-entities";
 import { createEffect, createRoot } from "solid-js";
-import { ReactivityScope } from "../src/entity-signals"
+import { ReactivityScope, ManipulationBufferState, manipulationBufferSignal } from "../src/entity-signals"
 
 describe("entity signal tests", () => {
     it("binds an entity property signal and tests manipulation feedback avoidance", async () => {
@@ -86,6 +86,63 @@ describe("entity signal tests", () => {
             expect(collectedValues.length).toBe(2);
             expect(collectedValues[0]).toBe(r1.name);
             expect(collectedValues[1]).toBe(r1.mimeType);
+        });
+    });
+    it("Tests the manipulation buffer signaling", async () => {
+        createRoot(async () => {
+            await Promise.resolve();
+
+            const entities = me.openEntities("test");
+            const manipulationBuffer = entities.manipulationBuffer;
+            const getBufferState = manipulationBufferSignal(manipulationBuffer);
+
+            expect(getBufferState().canUndo).toBeFalsy();
+            expect(getBufferState().undoCount).toBe(0);
+            expect(getBufferState().canRedo).toBeFalsy();
+            expect(getBufferState().redoCount).toBe(0);
+            expect(getBufferState().canCommit).toBeFalsy();
+            
+            const r1 = entities.createX(Resource).withId("abc");
+            r1.name = "test-name";
+            
+            expect(getBufferState().canUndo).toBeTruthy();
+            expect(getBufferState().undoCount).toBe(2);
+            expect(getBufferState().canRedo).toBeFalsy();
+            expect(getBufferState().redoCount).toBe(0);
+            expect(getBufferState().canCommit).toBeTruthy();
+            
+            manipulationBuffer.undo();
+            
+            expect(getBufferState().canUndo).toBeTruthy();
+            expect(getBufferState().undoCount).toBe(1);
+            expect(getBufferState().canRedo).toBeTruthy();
+            expect(getBufferState().redoCount).toBe(1);
+            expect(getBufferState().canCommit).toBeTruthy();
+
+            manipulationBuffer.undo();
+            
+            expect(getBufferState().canUndo).toBeFalsy();
+            expect(getBufferState().undoCount).toBe(0);
+            expect(getBufferState().canRedo).toBeTruthy();
+            expect(getBufferState().redoCount).toBe(2);
+            expect(getBufferState().canCommit).toBeFalsy();
+
+            manipulationBuffer.redo();
+            
+            expect(getBufferState().canUndo).toBeTruthy();
+            expect(getBufferState().undoCount).toBe(1);
+            expect(getBufferState().canRedo).toBeTruthy();
+            expect(getBufferState().redoCount).toBe(1);
+            expect(getBufferState().canCommit).toBeTruthy();
+
+            await entities.commit();
+
+            expect(getBufferState().canUndo).toBeFalsy();
+            expect(getBufferState().undoCount).toBe(0);
+            expect(getBufferState().canRedo).toBeFalsy();
+            expect(getBufferState().redoCount).toBe(0);
+            expect(getBufferState().canCommit).toBeFalsy();
+
         });
     });
 });

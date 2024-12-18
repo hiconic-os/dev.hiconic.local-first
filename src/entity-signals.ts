@@ -2,6 +2,7 @@ import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
 import { Accessor, createEffect, createSignal, Setter, Signal } from "solid-js";
 import { manipulation, reflection, session } from "@dev.hiconic/tf.js_hc-js-api";
+import { ManipulationBuffer } from "./manipulation-buffer";
 
 type NonFunctionKeys<T> = Exclude<{
   [K in keyof T]: K extends string? (T[K] extends Function ? never : K) : never;
@@ -30,8 +31,44 @@ export interface EntitySignalBuilder<E extends rM.GenericEntity> {
   property<K extends NonFunctionKeys<E>>(property: reflection.Property | K): EntityPropertySignal<E, E[K]>;
 }
 
+/** Reflects the manipulation buffer state, typically used for undo/redo/save functionality in UI (see {@link manipulationBufferSignal}) */
+export interface ManipulationBufferState {
+   /** True if there is at least one manipulation that can be undone */
+   readonly canUndo: boolean;
+   /** True if there is at least one manipulation that can be redone */
+   readonly canRedo: boolean;
+   /** True if there is at least one manipulation to be committed (semantic alias of {@link canUndo}) */
+   readonly canCommit: boolean;
+   /** The number of manipulations that can be redone. */
+   readonly redoCount: number;
+   /** The number of manipulations that can be redone. */
+   readonly undoCount: number;
+}
+
 interface HasDisposer {
   readonly disposer: () => void;
+}
+
+/** Creates a signal containing the buffer's current state and returns the signal's getter. */
+export function manipulationBufferSignal(buffer: ManipulationBuffer): Accessor<ManipulationBufferState> {
+  const state: ManipulationBufferState = createBufferState(buffer);
+  /** Initialize the signal with the buffer's current state */
+  const [getter, setter] = createSignal(state);
+
+  /** Connects the signal's setter with buffer listening */
+  buffer.addBufferUpdateListener(() => setter(createBufferState(buffer)));
+
+  return getter;
+}
+
+function createBufferState(buffer: ManipulationBuffer): ManipulationBufferState {
+  return {
+    canUndo: buffer.canUndo(),
+    canRedo: buffer.canRedo(),
+    canCommit: buffer.canUndo(),
+    redoCount: buffer.tailCount(),
+    undoCount: buffer.headCount()
+  };
 }
 
 class EntityPropertySignalImpl<E extends rM.GenericEntity, V> extends Array<any> implements EntityPropertySignal<E, V>, HasDisposer {
@@ -181,4 +218,3 @@ export class ReactivityScope {
 
   }
 }
-
