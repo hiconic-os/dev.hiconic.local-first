@@ -46,14 +46,16 @@ export interface ManagedEntitiesSecurity {
     /**
      * Asynchronously encrypts data which maybe involve interaction with a wallet or entering a passphrase
      * @param data the data to be encrypted
+     * @param encryptionId identifies the competence that should do the decryption (e.g an address in a wallet)
      */
-    encrypt(data: string, signerAddress: string): Promise<string>;
+    encrypt(data: string, encryptionId: string): Promise<string>;
 
     /**
      * Asynchronously decrypts data which maybe involve interaction with a wallet or entering a passphrase
      * @param data the data to be encrypted
+     * @param encryptionId identifies the competence that should do the decryption (e.g an address in a wallet)
      */
-    decrypt(data: string, signerAddress: string): Promise<string>;
+    decrypt(data: string, encryptionId: string): Promise<string>;
 }
 
 /**
@@ -75,18 +77,25 @@ export interface Signer {
     address: string;
 }
 
-/**
- * Describes a transaction that is modelled in a way that it can be stored as JSON-like structure in the {@link indexedDB}
- */
-interface Transaction {
+interface TransactionMeta {
     version: number;
     deps: string[];
     id: string;
-    diff: string | [];
     date: number;
-    hash: string;
+}
+
+/**
+ * Describes a transaction that is modelled in a way that it can be stored as JSON-like structure in the {@link indexedDB}
+ */
+interface Transaction extends TransactionMeta {
     signer?: Signer;
+    hash: string;
     signature: string;
+    payload: string;
+}
+
+interface TransactionPayload extends TransactionMeta {
+    diff: [];
 }
 
 
@@ -298,26 +307,30 @@ class ManagedEntitiesImpl implements ManagedEntities {
         let transactions = await (await this.getDatabase()).fetch()
         transactions = this.orderByDependency(transactions)
 
+        const encryptionAddress = this.security? await this.requireEncryptionAddress(): null;
+
+        console.log("using encryptionAddress for decrypt: " + encryptionAddress);
+
         this.manipulationBuffer.clear();
         this.manipulationBuffer.suspendTracking();
         try {
             for (const t of transactions) {
                 const marshaller = new ManipulationMarshaller();
-                let diffAsStr = t.diff as string;
+                let diffAsStr = t.payload as string;
 
                 if (this.security) {
                     const signerAddress = t.signer!.address;
-                    diffAsStr = await this.security.decrypt(diffAsStr, signerAddress);
+                    diffAsStr = await this.security.decrypt(diffAsStr, encryptionAddress!);
                     if (!await this.security.verify(diffAsStr, t.signature, signerAddress))
                         // TODO: turn this into proper reasoning
                         throw new Error("wrong signature");
                 }
 
-                const deserTransaction = JSON.parse(diffAsStr) as Transaction;
+                const payload = JSON.parse(diffAsStr) as TransactionPayload;
 
                 // TODO: check transaction fields for equality as additional check
 
-                const diff = deserTransaction.diff as [];
+                const diff = payload.diff;
                 const manis = await marshaller.unmarshalFromJson(diff)
                 const manipulator = this.session.manipulate().mode(session.ManipulationMode.REMOTE_GLOBAL);
                 for (const manipulation of manis) {
@@ -361,12 +374,17 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
             const hash = await this.security.hash(diff);
             const signature = await this.security.sign(diff, signer.address);
-            diff = await this.security.encrypt(diff, signer.address);
+
+            const encryptionAddress = await this.acquireEncryptionAddress(signer.address);
+
+            console.log("using encryptionAddress for encrypt: " + encryptionAddress);
+
+            diff = await this.security.encrypt(diff, encryptionAddress);
             transaction.signature = signature;
             transaction.hash = hash;
         }
 
-        transaction.diff = diff;
+        transaction.payload = diff;
 
         console.log(transaction);
 
@@ -378,6 +396,19 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
         // store the id of the appended transaction as latest transaction id
         this.lastTransactionId = transaction.id
+    }
+
+    async acquireEncryptionAddress(saveAddress: string): Promise<string> {
+        return (await (await this.getDatabase()).acquireEncryptionAddress(saveAddress))!;
+    }
+
+    async requireEncryptionAddress(): Promise<string> {
+        const address = (await (await this.getDatabase()).acquireEncryptionAddress());
+        if (!address)
+            // TODO: reasoning
+            throw new Error("no encryptionAddress found in database");
+
+        return address;
     }
 
     private enrich(transaction: Transaction, serManis: string): string {
@@ -444,26 +475,33 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
 }
 
+interface DatabaseMeta {
+    id: string;
+    enryptionAddress?: string;
+}
+
 /**
  * An append-only persistence for {@link Transaction transactions} based on {@link indexedDB}.
  * 
  * It allows to {@link Database.fetch|fetch} and {@link Database.append|append} {@link Transaction transactions}
  */
 class Database {
+    static readonly OBJECT_STORE_TRANSACTIONS = "transactions";
+    static readonly OBJECT_STORE_META = "meta";
 
     private db: IDBDatabase;
-    private databaseName: string;
+    readonly name: string;
 
     constructor(databaseName: string, db: IDBDatabase) {
-        this.databaseName = databaseName;
+        this.name = databaseName;
         this.db = db;
     }
 
     static async open(databaseName: string): Promise<Database> {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open("event-source-db", 2);
+            const request = indexedDB.open(databaseName, 2);
 
-            request.onupgradeneeded = () => Database.init(databaseName, request.result);
+            request.onupgradeneeded = () => Database.init(request.result);
 
             request.onsuccess = () => {
                 const db = new Database(databaseName, request.result);
@@ -474,10 +512,39 @@ class Database {
         });
     }
 
+    async acquireEncryptionAddress(initAddress?: string): Promise<string | undefined> {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(Database.OBJECT_STORE_META, initAddress? 'readwrite': 'readonly');
+            const objectStore = transaction.objectStore(Database.OBJECT_STORE_META);
+
+            const request = objectStore.get(Database.OBJECT_STORE_META);
+
+            request.onsuccess = () => {
+                let meta = request.result as DatabaseMeta;
+
+                console.log(meta);
+
+                let encryptionAddress = meta?.enryptionAddress;
+
+                if (initAddress && !encryptionAddress) {
+                    if (!meta)
+                        meta = { id: Database.OBJECT_STORE_META};
+
+                    meta.enryptionAddress = encryptionAddress = initAddress;
+                    objectStore.add(meta);
+                }
+
+                resolve(encryptionAddress);
+            }
+
+            request.onerror = () => reject(request.error)
+        });
+    }
+
     async fetch(): Promise<Transaction[]> {
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([this.databaseName], 'readonly');
-            const objectStore = transaction.objectStore(this.databaseName);
+            const transaction = this.db.transaction(Database.OBJECT_STORE_TRANSACTIONS, 'readonly');
+            const objectStore = transaction.objectStore(Database.OBJECT_STORE_TRANSACTIONS);
 
             const request = objectStore.getAll();
 
@@ -492,8 +559,8 @@ class Database {
 
     append(transaction: Transaction): Promise<void> {
         return new Promise((resolve, reject) => {
-            const dbTransaction = this.db.transaction([this.databaseName], 'readwrite');
-            const objectStore = dbTransaction.objectStore(this.databaseName);
+            const dbTransaction = this.db.transaction(Database.OBJECT_STORE_TRANSACTIONS, 'readwrite');
+            const objectStore = dbTransaction.objectStore(Database.OBJECT_STORE_TRANSACTIONS);
 
             const request = objectStore.add(transaction)
 
@@ -505,9 +572,12 @@ class Database {
         });
     }
 
-    private static init(databaseName: string, db: IDBDatabase): void {
-        if (!db.objectStoreNames.contains(databaseName)) {
-            db.createObjectStore(databaseName, { keyPath: 'id' });
+    private static init(db: IDBDatabase): void {
+        if (!db.objectStoreNames.contains(Database.OBJECT_STORE_TRANSACTIONS)) {
+            db.createObjectStore(Database.OBJECT_STORE_TRANSACTIONS, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(Database.OBJECT_STORE_META)) {
+            db.createObjectStore(Database.OBJECT_STORE_META, { keyPath: 'id' });
         }
     }
 }

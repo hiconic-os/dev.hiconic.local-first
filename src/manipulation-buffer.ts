@@ -103,7 +103,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
 
         const m = this.manipulations[--this.index];
 
-        this.applyManipulationUntracked(m.inverseManipulation);
+        this.applyManipulationUntracked(m.inverseManipulation!);
 
         this.notifyListeners();
     }
@@ -190,7 +190,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
         const endingFrame = this.currentFrame;
         for (const m of endingFrame.getManipulations()) {
             manis.push(m);
-            inverseManis.push(m.inverseManipulation);
+            inverseManis.push(m.inverseManipulation!);
         }
         frame.record(cM);
         this.currentFrame = frame;

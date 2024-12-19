@@ -18,7 +18,6 @@
     "solid-js": "^1.9.3"
   },
   "devDependencies": {
-    "@dev.hiconic/runtime": "file:./hc-rt",
     "@types/crypto-js": "^4.2.2",
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^25.0.1",

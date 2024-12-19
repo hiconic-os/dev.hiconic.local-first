@@ -38,12 +38,12 @@ export function decryptString(encryptedData: string, key: string): string {
   const { ciphertext, iv } = JSON.parse(encryptedData);
 
   // parse ciphered text and IV from Base64 and hex
-  const encryptedCiphertext = CryptoJS.enc.Base64.parse(ciphertext);
+  const binaryCiphertext = CryptoJS.enc.Base64.parse(ciphertext);
   const ivHex = CryptoJS.enc.Hex.parse(iv);
 
   // decrypt with AES
   const decrypted = CryptoJS.AES.decrypt(
-    { ciphertext: encryptedCiphertext } as any,
+    { ciphertext: binaryCiphertext } as any,
     keyHex,
     { iv: ivHex }
   );
@@ -51,7 +51,7 @@ export function decryptString(encryptedData: string, key: string): string {
   return decrypted.toString(CryptoJS.enc.Utf8); // Entschlüsselte Zeichenkette zurückgeben
 }
     
-export class MockSignatureService implements ManagedEntitiesSecurity {
+export class MockManagedEntitySecurity implements ManagedEntitiesSecurity {
   private readonly keysByAddress = new Map<string, string>();
 
   private getKey(address: string): string {

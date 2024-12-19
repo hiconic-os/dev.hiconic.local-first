@@ -189,12 +189,12 @@ class ManipulationToJson extends Continuation {
     }
 
     private instantiationToJson(m: InstantiationManipulation | ManifestationManipulation): InstantiationTuple {
-        const e = m.entity;
-        return [">", e.globalId, e.EntityType().getTypeSignature()];
+        const e = m.entity!;
+        return [">", e.globalId!, e.EntityType().getTypeSignature()];
     }
 
     private deleteToJson(m: DeleteManipulation): DeleteTuple {
-        return ["<", m.entity.globalId];
+        return ["<", m.entity?.globalId!];
     }
 
     private changeValueToJson(m: ChangeValueManipulation): ChangeValueTuple {
@@ -245,10 +245,10 @@ class ManipulationToJson extends Continuation {
     }
 
     private owner(m: PropertyManipulation): [id: string, property: string, type: reflection.GenericModelType] {
-        const owner = m.owner as oM.LocalEntityProperty;
-        const entity = owner.entity;
-        const property = entity.EntityType().getProperty(owner.propertyName);
-        return [entity.globalId, property.getName(), property.getType()];
+        const owner = m.owner! as oM.LocalEntityProperty;
+        const entity = owner.entity!;
+        const property = entity.EntityType().getProperty(owner.propertyName!);
+        return [entity.globalId!, property.getName(), property.getType()];
     }
 
     private valueToJson(type: reflection.GenericModelType, value: any): any {
