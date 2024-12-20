@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { Resource } from "@dev.hiconic/gm_resource-model"
+import { ChangeValueManipulation, CompoundManipulation, InstantiationManipulation } from "@dev.hiconic/gm_manipulation-model"
+import { LocalEntityProperty } from "@dev.hiconic/gm_owner-model"
 import * as mm from "@dev.hiconic/gm_manipulation-model"
 import { reflection as refl, T } from "@dev.hiconic/tf.js_hc-js-api";
 import * as me from "../src/managed-entities";
@@ -17,7 +19,7 @@ describe("managed entities", () => {
         const r1 = entities.createX(Resource).withId("abc");
         const r2 = entities.createX(Resource).withId("rst");
 
-        const r1Again = entities.get(r1.globalId);
+        const r1Again = entities.get(r1.globalId!);
 
         expect(r1).toBe(r1Again);
     });
@@ -28,7 +30,7 @@ describe("managed entities", () => {
         const r2 = entities.createX(Resource).withId("rst");
         const r3 = entities.createX(Resource).withId("xyz");
 
-        const sorter = (e1: Resource, e2: Resource) => e1.globalId.localeCompare(e2.globalId);
+        const sorter = (e1: Resource, e2: Resource) => e1.globalId!.localeCompare(e2.globalId!);
 
         const resources = entities.list(Resource).sort(sorter);
 
@@ -46,5 +48,67 @@ describe("managed entities", () => {
 
         expect(resourcesAfterDelete[0]).toBe(r1);
         expect(resourcesAfterDelete[1]).toBe(r3);
+    });
+    it("extends an instantiation manipulation to compound", async () => {
+        const entities = me.openEntities("test");
+
+        entities.session.listeners().add({
+            onMan(manipulation) {
+                if (InstantiationManipulation.isInstance(manipulation)) {
+                    const im = manipulation as InstantiationManipulation;
+                    if (Resource.isInstance(im.entity)) {
+                        entities.manipulationBuffer.extendingCompoundManipulation(manipulation, () => {
+                            const resource = im.entity as Resource;
+                            resource.mimeType = "text/plain";
+                        })
+                    }
+                }
+            },
+        })
+
+        const resource = entities.create(Resource);
+
+        const manis = entities.manipulationBuffer.getCommitManipulations();
+
+        expect(resource.mimeType).toBe("text/plain");
+        expect(manis.length).toBe(1);
+        expect(CompoundManipulation.isInstance(manis[0])).toBeTruthy();
+    });
+
+    it("extends a change value manipulation to compound and blocks that for undoing", async () => {
+        const entities = me.openEntities("test");
+
+        entities.session.listeners().add({
+            onMan(manipulation) {
+                if (!entities.manipulationBuffer.isUndoing() && ChangeValueManipulation.isInstance(manipulation)) {
+                    const cvm = manipulation as ChangeValueManipulation;
+                    const ep = cvm.owner as LocalEntityProperty;
+                    if (Resource.isInstance(ep.entity) && ep.propertyName == "name") {
+                        entities.manipulationBuffer.extendingCompoundManipulation(manipulation, () => {
+                            const resource = ep.entity as Resource;
+                            resource.mimeType = "text/plain";
+                        })
+                    }
+                }
+            },
+        })
+
+        const resource = entities.create(Resource);
+        resource.name = "unnamed";
+
+        const manis = entities.manipulationBuffer.getCommitManipulations();
+
+        expect(resource.mimeType).toBe("text/plain");
+        expect(manis.length).toBe(2);
+        expect(InstantiationManipulation.isInstance(manis[0])).toBeTruthy();
+        expect(CompoundManipulation.isInstance(manis[1])).toBeTruthy();
+
+        entities.manipulationBuffer.undo();
+
+        const manisAfterUndo = entities.manipulationBuffer.getCommitManipulations();
+
+        expect(resource.mimeType).not.toBe("text/plain");
+        expect(manisAfterUndo.length).toBe(1);
+        expect(InstantiationManipulation.isInstance(manisAfterUndo[0])).toBeTruthy();
     });
   });
