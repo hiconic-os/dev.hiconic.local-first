@@ -1,5 +1,5 @@
 import * as me from "../src/managed-entities";
-import { MockManagedEntitySecurity } from "../src/crypto"
+import { MockManagedEntityAuth, MockManagedEntityEncryption } from "../src/crypto"
 import { GenericEntity } from "@dev.hiconic/gm_root-model"
 import { ManipulationMarshaller } from "../src/manipulation-marshaler";
 
@@ -12,13 +12,8 @@ export interface ReplicationTestBuilder {
     replicate(tester: DataTester): Promise<void>
 }
 
-class BrokenSignatureService extends MockManagedEntitySecurity {
-    async verify(data: string, signature: string, signerAddress: string): Promise<boolean> {
-        return false;
-    }
-}
-
-const security = new MockManagedEntitySecurity();
+const auth = new MockManagedEntityAuth();
+const encryption = new MockManagedEntityEncryption();
 
 export function generateReplication(): ReplicationTestBuilder {
     const generators: DataGenerator[] = [];
@@ -29,14 +24,14 @@ export function generateReplication(): ReplicationTestBuilder {
             return this;
         },
         async replicate(tester) {
-            const original = me.openEntities("test", security);
+            const original = me.openEntities("test", {auth, encryption});
 
             for (const generator of generators) {
                 const signer = generator(original);
                 await original.commit(signer);
             }
 
-            const replicated = me.openEntities("test", security);
+            const replicated = me.openEntities("test", {auth, encryption});
             
             await replicated.load();
         

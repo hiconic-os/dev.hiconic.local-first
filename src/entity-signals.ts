@@ -1,6 +1,6 @@
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
-import { Accessor, createEffect, createSignal, Setter, Signal } from "solid-js";
+import { Accessor, createEffect, createSignal, Setter, Signal, onCleanup } from "solid-js";
 import { manipulation, reflection, session } from "@dev.hiconic/tf.js_hc-js-api";
 import { ManipulationBuffer } from "./manipulation-buffer";
 
@@ -104,13 +104,20 @@ class EntitySignalImpl<E extends rM.GenericEntity> implements EntitySignal<E>, H
   }
 }
 
+/** 
+ * A ReactivityScope {@link ReactivityScope.signal creates} and manages the connection between hiconic entities from a {@link session.ManagedGmSession session} and 
+ * {@link Signal solid-js signals}. It should be {@link ReactivityScope.close closed} when a solid-js component is {@link onCleanup cleaned up}.
+ * 
+ */
 export class ReactivityScope {
   private session: session.ManagedGmSession;
   private propertySignals = new Map<string, EntityPropertySignalImpl<any, any>>();
   private entitySignals = new Map<rM.GenericEntity, EntitySignalImpl<any>>();
   
-  constructor(session: session.ManagedGmSession) {
+  constructor(session: session.ManagedGmSession, autoClose: boolean) {
     this.session = session;
+    if (autoClose)
+      onCleanup(() => this.close());
   }
 
   close() {
@@ -119,6 +126,7 @@ export class ReactivityScope {
     this.entitySignals.forEach(s => s.disposer());
     this.entitySignals.clear();
   } 
+
 
   signal<E extends rM.GenericEntity>(entity: E): EntitySignalBuilder<E> {
     return {

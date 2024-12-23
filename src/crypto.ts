@@ -1,5 +1,5 @@
 import CryptoJS from "crypto-js";
-import { ManagedEntitiesSecurity } from "./managed-entities";
+import { ManagedEntitiesAuth, ManagedEntitiesEncryption } from "./managed-entities";
 
 // 1. Funktion zur Erzeugung eines symmetrischen Schlüssels
 export function generateSymmetricKey(): string {
@@ -51,20 +51,7 @@ export function decryptString(encryptedData: string, key: string): string {
   return decrypted.toString(CryptoJS.enc.Utf8); // Entschlüsselte Zeichenkette zurückgeben
 }
     
-export class MockManagedEntitySecurity implements ManagedEntitiesSecurity {
-  private readonly keysByAddress = new Map<string, string>();
-
-  private getKey(address: string): string {
-    let key = this.keysByAddress.get(address);
-
-    if (!key) {
-      key = generateSymmetricKey();
-      this.keysByAddress.set(address, key);
-    }
-
-    return key;
-  }
-
+export class MockManagedEntityAuth implements ManagedEntitiesAuth {
   async sign(data: string, signerAddress: string): Promise<string> {
     // Einfacher MD5-Hash des Datenstrings
     return this.hash(signerAddress + ":" + data);
@@ -79,12 +66,17 @@ export class MockManagedEntitySecurity implements ManagedEntitiesSecurity {
   async hash(data: string): Promise<string> {
     return CryptoJS.MD5(data).toString(CryptoJS.enc.Hex);
   }
+}
 
-  async decrypt(data: string, signerAddress: string): Promise<string> {
-    return decryptString(data, this.getKey(signerAddress));
+export class MockManagedEntityEncryption implements ManagedEntitiesEncryption {
+  private readonly key = generateSymmetricKey();
+
+  async decrypt(data: string): Promise<string> {
+    return decryptString(data, this.key);
   }
 
-  async encrypt(data: string, signerAddress: string): Promise<string> {
-    return encryptString(data, this.getKey(signerAddress));
+  async encrypt(data: string): Promise<string> {
+    return encryptString(data, this.key);
   }
+
 }

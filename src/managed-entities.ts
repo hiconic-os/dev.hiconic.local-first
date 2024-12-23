@@ -7,11 +7,16 @@ import { ManipulationMarshaller } from "./manipulation-marshaler";
 
 export type { ManipulationBuffer, ManipulationBufferUpdateListener };
 
+export type ManagedEntitiesConfig = {
+    auth?: ManagedEntitiesAuth, 
+    encryption?: ManagedEntitiesEncryption
+}
+
 /** 
  * Opens a {@link ManagedEntities} instance backed by the indexedDB named "event-source-db".
  * @param databaseName name of the ObjectStore used as space for the stored events
  */
-export function openEntities(databaseName: string, security?: ManagedEntitiesSecurity): ManagedEntities {
+export function openEntities(databaseName: string, security?: ManagedEntitiesConfig): ManagedEntities {
     return new ManagedEntitiesImpl(databaseName, security)
 }
 
@@ -23,7 +28,7 @@ export type PartialProperties<T> = Partial<
 /**
  * Optional security for managed entities
  */
-export interface ManagedEntitiesSecurity {
+export interface ManagedEntitiesAuth {
     /**
      * Asynchronously signs a data (most likely involving some UI interaction for the user)
      * @param data the data to be signed
@@ -42,20 +47,21 @@ export interface ManagedEntitiesSecurity {
      * @param data the data to be hashed
      */
     hash(data: string): Promise<string>;
+}
 
+export interface ManagedEntitiesEncryption {
     /**
      * Asynchronously encrypts data which maybe involve interaction with a wallet or entering a passphrase
      * @param data the data to be encrypted
-     * @param encryptionId identifies the competence that should do the decryption (e.g an address in a wallet)
      */
-    encrypt(data: string, encryptionId: string): Promise<string>;
+    encrypt(data: string): Promise<string>;
 
     /**
      * Asynchronously decrypts data which maybe involve interaction with a wallet or entering a passphrase
      * @param data the data to be encrypted
-     * @param encryptionId identifies the competence that should do the decryption (e.g an address in a wallet)
      */
-    decrypt(data: string, encryptionId: string): Promise<string>;
+    decrypt(data: string): Promise<string>;
+
 }
 
 /**
@@ -209,12 +215,14 @@ class ManagedEntitiesImpl implements ManagedEntities {
     databaseName: string
 
     /** The optional signature service that ensures authenticity of transactions */
-    security?: ManagedEntitiesSecurity;
+    security?: ManagedEntitiesAuth;
+    encryption?: ManagedEntitiesEncryption;
 
-    constructor(databaseName: string, security?: ManagedEntitiesSecurity) {
+    constructor(databaseName: string, security?: ManagedEntitiesConfig) {
         this.databaseName = databaseName
         this.manipulationBuffer = new SessionManipulationBuffer(this.session);
-        this.security = security;
+        this.security = security?.auth;
+        this.encryption = security?.encryption;
     }
 
     create<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): E {
@@ -307,10 +315,6 @@ class ManagedEntitiesImpl implements ManagedEntities {
         let transactions = await (await this.getDatabase()).fetch()
         transactions = this.orderByDependency(transactions)
 
-        const encryptionAddress = this.security? await this.requireEncryptionAddress(): null;
-
-        console.log("using encryptionAddress for decrypt: " + encryptionAddress);
-
         this.manipulationBuffer.clear();
         this.manipulationBuffer.suspendTracking();
         try {
@@ -318,9 +322,12 @@ class ManagedEntitiesImpl implements ManagedEntities {
                 const marshaller = new ManipulationMarshaller();
                 let diffAsStr = t.payload as string;
 
+                if (this.encryption) {
+                    diffAsStr = await this.encryption.decrypt(diffAsStr);
+                }
+
                 if (this.security) {
                     const signerAddress = t.signer!.address;
-                    diffAsStr = await this.security.decrypt(diffAsStr, encryptionAddress!);
                     if (!await this.security.verify(diffAsStr, t.signature, signerAddress))
                         // TODO: turn this into proper reasoning
                         throw new Error("wrong signature");
@@ -374,14 +381,13 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
             const hash = await this.security.hash(diff);
             const signature = await this.security.sign(diff, signer.address);
-
-            const encryptionAddress = await this.acquireEncryptionAddress(signer.address);
-
-            console.log("using encryptionAddress for encrypt: " + encryptionAddress);
-
-            diff = await this.security.encrypt(diff, encryptionAddress);
+            
             transaction.signature = signature;
             transaction.hash = hash;
+        }
+
+        if (this.encryption) {
+            diff = await this.encryption.encrypt(diff);
         }
 
         transaction.payload = diff;
@@ -396,19 +402,6 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
         // store the id of the appended transaction as latest transaction id
         this.lastTransactionId = transaction.id
-    }
-
-    async acquireEncryptionAddress(saveAddress: string): Promise<string> {
-        return (await (await this.getDatabase()).acquireEncryptionAddress(saveAddress))!;
-    }
-
-    async requireEncryptionAddress(): Promise<string> {
-        const address = (await (await this.getDatabase()).acquireEncryptionAddress());
-        if (!address)
-            // TODO: reasoning
-            throw new Error("no encryptionAddress found in database");
-
-        return address;
     }
 
     private enrich(transaction: Transaction, serManis: string): string {
@@ -475,11 +468,6 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
 }
 
-interface DatabaseMeta {
-    id: string;
-    enryptionAddress?: string;
-}
-
 /**
  * An append-only persistence for {@link Transaction transactions} based on {@link indexedDB}.
  * 
@@ -487,7 +475,6 @@ interface DatabaseMeta {
  */
 class Database {
     static readonly OBJECT_STORE_TRANSACTIONS = "transactions";
-    static readonly OBJECT_STORE_META = "meta";
 
     private db: IDBDatabase;
     readonly name: string;
@@ -506,35 +493,6 @@ class Database {
             request.onsuccess = () => {
                 const db = new Database(databaseName, request.result);
                 resolve(db)
-            }
-
-            request.onerror = () => reject(request.error)
-        });
-    }
-
-    async acquireEncryptionAddress(initAddress?: string): Promise<string | undefined> {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(Database.OBJECT_STORE_META, initAddress? 'readwrite': 'readonly');
-            const objectStore = transaction.objectStore(Database.OBJECT_STORE_META);
-
-            const request = objectStore.get(Database.OBJECT_STORE_META);
-
-            request.onsuccess = () => {
-                let meta = request.result as DatabaseMeta;
-
-                console.log(meta);
-
-                let encryptionAddress = meta?.enryptionAddress;
-
-                if (initAddress && !encryptionAddress) {
-                    if (!meta)
-                        meta = { id: Database.OBJECT_STORE_META};
-
-                    meta.enryptionAddress = encryptionAddress = initAddress;
-                    objectStore.add(meta);
-                }
-
-                resolve(encryptionAddress);
             }
 
             request.onerror = () => reject(request.error)
@@ -575,9 +533,6 @@ class Database {
     private static init(db: IDBDatabase): void {
         if (!db.objectStoreNames.contains(Database.OBJECT_STORE_TRANSACTIONS)) {
             db.createObjectStore(Database.OBJECT_STORE_TRANSACTIONS, { keyPath: 'id' });
-        }
-        if (!db.objectStoreNames.contains(Database.OBJECT_STORE_META)) {
-            db.createObjectStore(Database.OBJECT_STORE_META, { keyPath: 'id' });
         }
     }
 }
