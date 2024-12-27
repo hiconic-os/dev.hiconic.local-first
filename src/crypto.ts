@@ -1,5 +1,5 @@
 import CryptoJS from "crypto-js";
-import { ManagedEntitiesAuth, ManagedEntitiesEncryption } from "./managed-entities";
+import { ManagedEntitiesAuth, ManagedEntitiesEncryption } from "./managed-entities.js";
 
 // 1. Funktion zur Erzeugung eines symmetrischen Schlüssels
 export function generateSymmetricKey(): string {

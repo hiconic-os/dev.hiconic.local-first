@@ -1,8 +1,8 @@
 import { session, reflection, util } from "@dev.hiconic/tf.js_hc-js-api";
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
-import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer } from "./manipulation-buffer";
-import { ManipulationMarshaller } from "./manipulation-marshaler";
+import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer } from "./manipulation-buffer.js";
+import { ManipulationMarshaller } from "./manipulation-marshaler.js";
 
 
 export type { ManipulationBuffer, ManipulationBufferUpdateListener };

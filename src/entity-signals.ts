@@ -2,7 +2,7 @@ import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
 import { Accessor, createEffect, createSignal, Setter, Signal, onCleanup } from "solid-js";
 import { manipulation, reflection, session } from "@dev.hiconic/tf.js_hc-js-api";
-import { ManipulationBuffer } from "./manipulation-buffer";
+import { ManipulationBuffer } from "./manipulation-buffer.js";
 
 type NonFunctionKeys<T> = Exclude<{
   [K in keyof T]: K extends string? (T[K] extends Function ? never : K) : never;
