@@ -31,12 +31,30 @@
     "dist"
   ],
   "exports": {
-    ".": "./dist/local-first.js",
-    "./continuation": "./dist/continuation.js",
-    "./entity-signals": "./dist/entity-signals.js",
-    "./managed-entities": "./dist/managed-entities.js",
-    "./manipulation-buffer": "./dist/manipulation-buffer.js",
-    "./manipulation-marshaler": "./dist/manipulation-marshaler.js"
+    ".": {
+      "types": "./dist/local-first.d.ts",
+      "default": "./dist/local-first.js"
+    },
+    "./continuation": {
+      "types": "./dist/continuation.d.ts", 
+      "default": "./dist/continuation.js"
+    },
+    "./entity-signals": {
+      "types": "./dist/entity-signals.d.ts",
+      "default": "./dist/entity-signals.js"
+    },
+    "./managed-entities": {
+      "types": "./dist/managed-entities.d.ts",
+      "default": "./dist/managed-entities.js"
+    },
+    "./manipulation-buffer": {
+      "types": "./dist/manipulation-buffer.d.ts",
+      "default": "./dist/manipulation-buffer.js"
+    },
+    "./manipulation-marshaler": {
+      "types": "./dist/manipulation-marshaler.d.ts",
+      "default": "./dist/manipulation-marshaler.js"
+    }
   },
   "repository": {
     "type": "git",
