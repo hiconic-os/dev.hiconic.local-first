@@ -3,13 +3,17 @@ import { Resource } from "@dev.hiconic/gm_resource-model"
 import { ChangeValueManipulation, CompoundManipulation, InstantiationManipulation } from "@dev.hiconic/gm_manipulation-model"
 import { LocalEntityProperty } from "@dev.hiconic/gm_owner-model"
 import * as mm from "@dev.hiconic/gm_manipulation-model"
-import { reflection as refl, T } from "@dev.hiconic/tf.js_hc-js-api";
+import { reflection as refl, T, hc } from "@dev.hiconic/tf.js_hc-js-api";
 import * as me from "../src/managed-entities";
 
 function outputManipulations(manipulations: mm.Manipulation[]) {
     for (const manipulation of manipulations) {
         console.log(manipulation.EntityType().getTypeSignature())
     }
+}
+
+function createTestDbName(name: string): string {
+    return name + "-" + hc.util.newUuid();
 }
 
 describe("managed entities", () => {
@@ -49,6 +53,7 @@ describe("managed entities", () => {
         expect(resourcesAfterDelete[0]).toBe(r1);
         expect(resourcesAfterDelete[1]).toBe(r3);
     });
+
     it("extends an instantiation manipulation to compound", async () => {
         const entities = me.openEntities("test");
 
@@ -73,6 +78,17 @@ describe("managed entities", () => {
         expect(resource.mimeType).toBe("text/plain");
         expect(manis.length).toBe(1);
         expect(CompoundManipulation.isInstance(manis[0])).toBeTruthy();
+
+        const cm = manis[0] as CompoundManipulation;
+
+        for (const m of cm.compoundManipulationList) {
+            console.log(m.ToString());
+        }
+
+        const cManis = cm.compoundManipulationList;
+
+        expect(cManis.length).toBe(2);
+        expect(InstantiationManipulation.isInstance(cManis.at(0)!)).toBeTruthy();
     });
 
     it("extends a change value manipulation to compound and blocks that for undoing", async () => {
@@ -103,6 +119,14 @@ describe("managed entities", () => {
         expect(InstantiationManipulation.isInstance(manis[0])).toBeTruthy();
         expect(CompoundManipulation.isInstance(manis[1])).toBeTruthy();
 
+        const cm = manis[1] as CompoundManipulation;
+
+        const cManis = cm.compoundManipulationList;
+
+        expect(cManis.length).toBe(2);
+        expect(ChangeValueManipulation.isInstance(cManis.at(0))).toBeTruthy();
+        expect(ChangeValueManipulation.isInstance(cManis.at(1))).toBeTruthy();
+
         entities.manipulationBuffer.undo();
 
         const manisAfterUndo = entities.manipulationBuffer.getCommitManipulations();
@@ -110,5 +134,30 @@ describe("managed entities", () => {
         expect(resource.mimeType).not.toBe("text/plain");
         expect(manisAfterUndo.length).toBe(1);
         expect(InstantiationManipulation.isInstance(manisAfterUndo[0])).toBeTruthy();
+    });
+
+    it("commit state check", async () => {
+        const entities = me.openEntities("test");
+        entities.create(Resource);
+
+        await entities.commit()
+    });
+
+    it("data initialization", async () => {
+
+        const rid = "the-resource";
+        const name = "foobar";
+
+        const initializer: me.DataInitializer = async ents => {
+            const r = ents.createX(Resource).withId(rid);
+            r.name = name;
+        };
+
+        const entities = me.openEntities("test", {dataInitializers: [initializer]});
+        await entities.load();
+
+        const r = entities.get(rid) as Resource;
+
+        expect(r.name).toBe(name);
     });
   });

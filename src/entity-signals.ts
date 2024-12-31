@@ -114,7 +114,7 @@ export class ReactivityScope {
   private propertySignals = new Map<string, EntityPropertySignalImpl<any, any>>();
   private entitySignals = new Map<rM.GenericEntity, EntitySignalImpl<any>>();
   
-  constructor(session: session.ManagedGmSession, autoClose: boolean) {
+  constructor(session: session.ManagedGmSession, autoClose = false) {
     this.session = session;
     if (autoClose)
       onCleanup(() => this.close());

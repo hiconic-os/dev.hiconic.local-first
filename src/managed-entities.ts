@@ -9,7 +9,8 @@ export type { ManipulationBuffer, ManipulationBufferUpdateListener };
 
 export type ManagedEntitiesConfig = {
     auth?: ManagedEntitiesAuth, 
-    encryption?: ManagedEntitiesEncryption
+    encryption?: ManagedEntitiesEncryption,
+    dataInitializers?: DataInitializer[]
 }
 
 /** 
@@ -63,6 +64,8 @@ export interface ManagedEntitiesEncryption {
     decrypt(data: string): Promise<string>;
 
 }
+
+export type DataInitializer = (entities: ManagedEntities) => Promise<void>
 
 /**
  * 
@@ -216,13 +219,17 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
     /** The optional signature service that ensures authenticity of transactions */
     security?: ManagedEntitiesAuth;
+
     encryption?: ManagedEntitiesEncryption;
 
-    constructor(databaseName: string, security?: ManagedEntitiesConfig) {
+    initializers?: DataInitializer[];
+
+    constructor(databaseName: string, config?: ManagedEntitiesConfig) {
         this.databaseName = databaseName
         this.manipulationBuffer = new SessionManipulationBuffer(this.session);
-        this.security = security?.auth;
-        this.encryption = security?.encryption;
+        this.security = config?.auth;
+        this.encryption = config?.encryption;
+        this.initializers = config?.dataInitializers;
     }
 
     create<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): E {
@@ -310,6 +317,15 @@ class ManagedEntitiesImpl implements ManagedEntities {
         }
     }
 
+    private async initialize(): Promise<void> {
+        if (!this.initializers)
+            return;
+
+        for (const initializer of this.initializers) {
+            await initializer(this);
+        }
+    }
+
     async load(): Promise<void> {
         // get database and fetch all transaction records from it
         let transactions = await (await this.getDatabase()).fetch()
@@ -317,6 +333,9 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
         this.manipulationBuffer.clear();
         this.manipulationBuffer.suspendTracking();
+
+        await this.initialize();
+
         try {
             for (const t of transactions) {
                 const marshaller = new ManipulationMarshaller();
@@ -392,8 +411,6 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
         transaction.payload = diff;
 
-        console.log(transaction);
-
         // append the transaction record to the database
         await (await this.getDatabase()).append(transaction)
 
@@ -410,6 +427,9 @@ class ManagedEntitiesImpl implements ManagedEntities {
         builder.push("{")
 
         for (const [key, value] of Object.entries(transaction)) {
+            if (value === undefined)
+                continue;
+
             builder.push('"');
             builder.push(key);
             builder.push('"');

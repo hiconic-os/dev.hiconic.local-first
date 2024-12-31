@@ -6,7 +6,7 @@
         "request": "launch",
         "name": "Debug Vitest Tests",
         "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
-        "args": ["--inspect-brk", "--run", "--no-file-parallelism", "managed-entities.test.ts"],
+        "args": ["--inspect-brk", "--run", "--no-file-parallelism", "managed-entities.test.ts", "-t", "data initialization"],
         "autoAttachChildProcesses": true,
         "skipFiles": ["<node_internals>/**"]
       }
