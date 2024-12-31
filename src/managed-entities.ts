@@ -1,7 +1,7 @@
 import { session, reflection, util } from "@dev.hiconic/tf.js_hc-js-api";
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
-import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer } from "./manipulation-buffer.js";
+import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer, ManipulationFrame } from "./manipulation-buffer.js";
 import { ManipulationMarshaller } from "./manipulation-marshaler.js";
 
 
@@ -158,11 +158,7 @@ export interface ManagedEntities {
 
     list<E extends rM.GenericEntity>(type: reflection.EntityType<E>): E[];
 
-    beginCompoundManipulation(): void;
-
-    endCompoundManipulation(): void;
-
-    compoundManipulation<R>(manipulator: () => R): R;
+    openNestedFrame(extendOn?: mM.Manipulation): ManipulationFrame;
 
     /**
      * Establishes a state within the {@link ManagedEntities.session|session} by applying the given manipulations.
@@ -283,16 +279,8 @@ class ManagedEntitiesImpl implements ManagedEntities {
         return this.session.getEntitiesView().getEntitiesPerType(type).toArray();
     }
 
-    beginCompoundManipulation(): void {
-        this.manipulationBuffer.beginCompoundManipulation();
-    }
-
-    endCompoundManipulation(): void {
-        this.manipulationBuffer.endCompoundManipulation();
-    }
-
-    compoundManipulation<R>(manipulator: () => R): R {
-        return this.manipulationBuffer.compoundManipulation(manipulator);
+    openNestedFrame(extendOn?: mM.Manipulation): ManipulationFrame {
+        return this.manipulationBuffer.openNestedFrame(extendOn);
     }
 
     async selectQuery(statement: string): Promise<session.SelectQueryResultConvenience> {

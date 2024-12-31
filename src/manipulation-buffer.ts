@@ -18,6 +18,12 @@ export interface ManipulationBuffer {
     /** True if the manpulation buffer is currently undoing manipulations */
     isUndoing(): boolean;
 
+    /** True if the manpulation buffer is currently redoing manipulations */
+    isRedoing(): boolean;
+
+    /** True whenever replicating operations are running (e.g {@link redo()}, {@link undo()}, initializing, loading) */
+    isReplicating(): boolean
+
     /** The amount of manipulations in the buffer including all undo/redo manipulations */
     totalCount(): number;
 
@@ -33,18 +39,21 @@ export interface ManipulationBuffer {
     /** Removes a listener that was previously {@link ManipulationBuffer.addBufferUpdateListener added} */
     removeBufferUpdateListener(listener: ManipulationBufferUpdateListener): void;
 
-    beginExtendingCompoundManipulation(extendOn: mM.Manipulation): void
+    openNestedFrame(extendOn?: mM.Manipulation): ManipulationFrame;
 
-    beginCompoundManipulation(): void;
-    
-    endCompoundManipulation(): void;
-    
-    compoundManipulation<R>(manipulator: () => R): R;
-    
-    extendingCompoundManipulation<R>(extendOn: mM.Manipulation, manipulator: () => R): R;
-
+    /**
+     * Returns the manipulations in order that currently would be subject for a commit. The are identical to the manipulations than can be undone.
+     */
     getCommitManipulations(): mM.Manipulation[];
 }
+
+export interface ManipulationFrame {
+    run<R>(manipulator: () => R): R
+    runAsync<R>(manipulator: () => Promise<R>): Promise<R>
+    close(): void;
+}
+
+
 
 interface TrackingFrame {
     record(manipulation: mM.Manipulation): void
@@ -94,6 +103,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
     private index = 0;
     private suspendTrackingCount = 0;
     private undoing = false;
+    private redoing = false;
 
     constructor(session: session.ManagedGmSession) {
         this.session = session;
@@ -122,7 +132,13 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
         
         const m = this.manipulations[this.index++];
 
-        this.applyManipulationUntracked(m);
+        this.redoing = true;
+        try {
+            this.applyManipulationUntracked(m);
+        }
+        finally {
+            this.redoing = false;
+        }
 
         this.notifyListeners();
     }
@@ -146,6 +162,14 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
 
     isUndoing(): boolean {
         return this.undoing;
+    }
+
+    isRedoing(): boolean {
+        return this.redoing;
+    }
+
+    isReplicating(): boolean {
+        return this.suspendTrackingCount > 0
     }
 
     clear(): void {
@@ -191,7 +215,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
     }
 
     private onMan(manipulation: mM.Manipulation): void {
-        if (this.suspendTrackingCount > 0)
+        if (this.isReplicating())
             return
 
         this.currentFrame.record(manipulation);
@@ -226,19 +250,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
         return undefined;
     }
 
-    beginCompoundManipulation(): void {
-        const frame = new NestedTrackingFrame();
-        this.outerFrames.push(this.currentFrame);
-        this.currentFrame = frame;
-    }
-
-    beginExtendingCompoundManipulation(extendOn: mM.Manipulation): void {
-        const frame = new NestedTrackingFrame(extendOn);
-        this.outerFrames.push(this.currentFrame);
-        this.currentFrame = frame;
-    }
-    
-    endCompoundManipulation(): void {
+    private endCompoundManipulation(): void {
         const frame = this.outerFrames.pop()!;
         const cM = mM.CompoundManipulation.create();
         const iCM = mM.CompoundManipulation.create();
@@ -262,24 +274,34 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
 
         this.currentFrame = frame;
     }
-    
-    compoundManipulation<R>(manipulator: () => R): R {
-        this.beginCompoundManipulation();
-        try {
-            return manipulator();
-        }   
-        finally {
-            this.endCompoundManipulation();
-        }     
-    }
 
-    extendingCompoundManipulation<R>(extendOn: mM.Manipulation, manipulator: () => R): R {
-        this.beginExtendingCompoundManipulation(extendOn);
-        try {
-            return manipulator();
-        }   
-        finally {
-            this.endCompoundManipulation();
-        }     
+    openNestedFrame(extendOn?: mM.Manipulation): ManipulationFrame {
+        const frame = new NestedTrackingFrame(extendOn);
+        this.outerFrames.push(this.currentFrame);
+        this.currentFrame = frame;
+
+        return {
+            run(manipulator) {
+                try {
+                    return manipulator();
+                }
+                finally {
+                    this.close();
+                }
+            },
+
+            async runAsync(manipulator) {
+                try {
+                    return (await manipulator());
+                }
+                finally {
+                    this.close();
+                }
+            },
+
+            close: () => {
+                this.endCompoundManipulation();
+            },
+        }
     }
 } 

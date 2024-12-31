@@ -18,7 +18,7 @@ function createTestDbName(name: string): string {
 
 describe("managed entities", () => {
     it("creates entities and accesses an entity by globalId", async () => {
-        const entities = me.openEntities("test");
+        const entities = me.openEntities(createTestDbName("test"));
 
         const r1 = entities.createX(Resource).withId("abc");
         const r2 = entities.createX(Resource).withId("rst");
@@ -29,7 +29,7 @@ describe("managed entities", () => {
     });
 
     it("creates, deletes and lists entities", async () => {
-        const entities = me.openEntities("test");
+        const entities = me.openEntities(createTestDbName("test"));
         const r1 = entities.createX(Resource).withId("abc");
         const r2 = entities.createX(Resource).withId("rst");
         const r3 = entities.createX(Resource).withId("xyz");
@@ -55,17 +55,17 @@ describe("managed entities", () => {
     });
 
     it("extends an instantiation manipulation to compound", async () => {
-        const entities = me.openEntities("test");
+        const entities = me.openEntities(createTestDbName("test"));
 
         entities.session.listeners().add({
             onMan(manipulation) {
                 if (InstantiationManipulation.isInstance(manipulation)) {
                     const im = manipulation as InstantiationManipulation;
                     if (Resource.isInstance(im.entity)) {
-                        entities.manipulationBuffer.extendingCompoundManipulation(manipulation, () => {
+                        entities.openNestedFrame(manipulation).run(() => {
                             const resource = im.entity as Resource;
                             resource.mimeType = "text/plain";
-                        })
+                        });
                     }
                 }
             },
@@ -80,11 +80,6 @@ describe("managed entities", () => {
         expect(CompoundManipulation.isInstance(manis[0])).toBeTruthy();
 
         const cm = manis[0] as CompoundManipulation;
-
-        for (const m of cm.compoundManipulationList) {
-            console.log(m.ToString());
-        }
-
         const cManis = cm.compoundManipulationList;
 
         expect(cManis.length).toBe(2);
@@ -92,7 +87,7 @@ describe("managed entities", () => {
     });
 
     it("extends a change value manipulation to compound and blocks that for undoing", async () => {
-        const entities = me.openEntities("test");
+        const entities = me.openEntities(createTestDbName("test"));
 
         entities.session.listeners().add({
             onMan(manipulation) {
@@ -100,7 +95,7 @@ describe("managed entities", () => {
                     const cvm = manipulation as ChangeValueManipulation;
                     const ep = cvm.owner as LocalEntityProperty;
                     if (Resource.isInstance(ep.entity) && ep.propertyName == "name") {
-                        entities.manipulationBuffer.extendingCompoundManipulation(manipulation, () => {
+                        entities.openNestedFrame(manipulation).run(() => {
                             const resource = ep.entity as Resource;
                             resource.mimeType = "text/plain";
                         })
@@ -137,7 +132,7 @@ describe("managed entities", () => {
     });
 
     it("commit state check", async () => {
-        const entities = me.openEntities("test");
+        const entities = me.openEntities(createTestDbName("test"));
         entities.create(Resource);
 
         await entities.commit()
@@ -153,7 +148,7 @@ describe("managed entities", () => {
             r.name = name;
         };
 
-        const entities = me.openEntities("test", {dataInitializers: [initializer]});
+        const entities = me.openEntities(createTestDbName("test"), {dataInitializers: [initializer]});
         await entities.load();
 
         const r = entities.get(rid) as Resource;
