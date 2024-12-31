@@ -1,6 +1,6 @@
 {
   "name": "@dev.hiconic/local-first",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "A js library that supports local-first web applications based on CRDT + MVC principles",
   "type": "module",
   "scripts": {
