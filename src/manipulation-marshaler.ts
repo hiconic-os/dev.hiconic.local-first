@@ -393,7 +393,10 @@ class JsonToManipulation extends Continuation {
             const m = CompoundManipulation.create();
             const manipulations = m.compoundManipulationList;
             const adder = manipulations.push.bind(manipulations);
-            this.forEachOf(json, j => this.jsonToManipulations(j, adder));
+            const it = json[Symbol.iterator]();
+            // consume
+            it.next();
+            this.forEachOfIterator(it, j => this.jsonToManipulations(j, adder));
             consumer(m);
         },
 

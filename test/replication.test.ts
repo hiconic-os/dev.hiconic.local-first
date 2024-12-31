@@ -40,4 +40,24 @@ describe("replication tests", () => {
         expect(replicatedResource.tags.has("two")).toBeTruthy();
       });
   });
+  it("replicating compound manipulation", async () => {
+    const globalId = "abc";
+    let resource: Resource;
+
+    await generateReplication().addTransaction(entities => {
+      entities.openNestedFrame().run(() => {
+        resource = entities.createX(Resource).withId(globalId);
+        resource.name = "Test Resource";
+        resource.mimeType = "text/plain";
+      })
+
+      return { name: "person1", address: "p3r50n1" }
+    })
+    .replicate((original, replicated) => {
+      const replicatedResource: Resource = replicated.get(globalId);
+
+      expect(replicatedResource.name).toBe(resource.name);
+      expect(replicatedResource.mimeType).toBe(resource.mimeType);
+    });
+  });
 });
