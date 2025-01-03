@@ -1,0 +1,14 @@
+name: Periodic local-first
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # Every day 3:00 UCT
+
+jobs:
+  run:
+    uses: hiconic-os/hiconic.ci.workflows/.github/workflows/npm-build.yaml@main
+    secrets:
+      NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
+    with:
+      publish: false
+      working-directory: "local-first-js"
