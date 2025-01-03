@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+
+<project xmlns:artifact="antlib:org.apache.maven.artifact.ant" xmlns:bt="antlib:com.braintribe.build.ant.tasks" basedir="." default="install">
+	<bt:import artifact="com.braintribe.devrock.ant:parent-ant-script#1.0" useCase="DEVROCK"/>
+</project>
