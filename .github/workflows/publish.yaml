@@ -1,4 +1,4 @@
-name: Publish
+name: Publish local-first
 
 on:
   workflow_dispatch:
@@ -14,4 +14,4 @@ jobs:
       NODE_AUTH_TOKEN: ${{ secrets.NODE_AUTH_TOKEN }}
     with:
       publish: ${{ inputs.publish }}
-      working-directory: "."
+      working-directory: "local-first-js"
