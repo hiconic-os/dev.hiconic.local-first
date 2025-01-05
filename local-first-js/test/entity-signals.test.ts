@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { Resource } from "@dev.hiconic/gm_resource-model"
 import * as mm from "@dev.hiconic/gm_manipulation-model"
-import * as me from "../src/managed-entities";
+import * as me from "../src/managed-entities.js";
 import { createEffect, createRoot } from "solid-js";
-import { ReactivityScope, ManipulationBufferState, manipulationBufferSignal } from "../src/entity-signals"
+import { ReactivityScope, manipulationBufferSignal } from "../src/entity-signals.js"
 
 describe("entity signal tests", () => {
     it("binds an entity property signal and tests manipulation feedback avoidance", async () => {

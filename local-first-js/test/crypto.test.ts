@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { decryptString, encryptString, generateSymmetricKey } from "../src/crypto"
+import { decryptString, encryptString, generateSymmetricKey } from "../src/crypto.js"
 
 describe("crypto", () => {
     it("creates entities and accesses an entity by globalId", async () => {

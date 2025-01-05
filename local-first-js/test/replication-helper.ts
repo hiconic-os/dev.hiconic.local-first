@@ -1,8 +1,7 @@
-import * as me from "../src/managed-entities";
-import { MockManagedEntityAuth, MockManagedEntityEncryption } from "../src/crypto"
+import * as me from "../src/managed-entities.js";
+import { MockManagedEntityAuth, ManagedEntityEncryption } from "../src/crypto.js"
 import { GenericEntity } from "@dev.hiconic/gm_root-model"
 import { util } from "@dev.hiconic/tf.js_hc-js-api"
-import { ManipulationMarshaller } from "../src/manipulation-marshaler";
 
 export type GmData<T extends GenericEntity> = T | T[] | undefined
 export type DataGenerator = (entities: me.ManagedEntities) => me.Signer;
@@ -14,7 +13,7 @@ export interface ReplicationTestBuilder {
 }
 
 const auth = new MockManagedEntityAuth();
-const encryption = new MockManagedEntityEncryption();
+const encryption = new ManagedEntityEncryption("replication-test", () => "pwd");
 
 function createTestDbName(name: string): string {
     return name + "-" + util.newUuid();

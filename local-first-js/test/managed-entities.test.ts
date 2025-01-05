@@ -2,15 +2,8 @@ import { describe, it, expect } from "vitest";
 import { Resource } from "@dev.hiconic/gm_resource-model"
 import { ChangeValueManipulation, CompoundManipulation, InstantiationManipulation } from "@dev.hiconic/gm_manipulation-model"
 import { LocalEntityProperty } from "@dev.hiconic/gm_owner-model"
-import * as mm from "@dev.hiconic/gm_manipulation-model"
-import { reflection as refl, T, hc } from "@dev.hiconic/tf.js_hc-js-api";
-import * as me from "../src/managed-entities";
-
-function outputManipulations(manipulations: mm.Manipulation[]) {
-    for (const manipulation of manipulations) {
-        console.log(manipulation.EntityType().getTypeSignature())
-    }
-}
+import { hc } from "@dev.hiconic/tf.js_hc-js-api";
+import * as me from "../src/managed-entities.js";
 
 function createTestDbName(name: string): string {
     return name + "-" + hc.util.newUuid();
@@ -21,7 +14,6 @@ describe("managed entities", () => {
         const entities = me.openEntities(createTestDbName("test"));
 
         const r1 = entities.createX(Resource).withId("abc");
-        const r2 = entities.createX(Resource).withId("rst");
 
         const r1Again = entities.get(r1.globalId!);
 

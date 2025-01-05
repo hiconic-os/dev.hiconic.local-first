@@ -8,6 +8,22 @@ export function generateSymmetricKey(): string {
   return key.toString(CryptoJS.enc.Hex);
 }
 
+export function generateSymmetricKeyFromPassphrase(utfSalt: string, passphrase: string): string {
+  // Define a static salt
+  const salt = CryptoJS.enc.Utf8.parse(utfSalt); // UTF-8 encoded salt
+  // Define the number of iterations and key size (256 bits = 32 bytes)
+  const iterations = 1000;
+  const keySize = 256 / 32; // Key size in words
+
+  // Use PBKDF2 to derive the key from the passphrase
+  const key = CryptoJS.PBKDF2(passphrase, salt, {
+    keySize,
+    iterations,
+  });
+
+  return key.toString(CryptoJS.enc.Hex);
+}
+
 export function deriveSymmetricKey(passphrase: string): string {
   const salt = "unique-app-salt";
   const key = CryptoJS.PBKDF2(passphrase, salt, {
@@ -68,15 +84,29 @@ export class MockManagedEntityAuth implements ManagedEntitiesAuth {
   }
 }
 
-export class MockManagedEntityEncryption implements ManagedEntitiesEncryption {
-  private readonly key = generateSymmetricKey();
+export class ManagedEntityEncryption implements ManagedEntitiesEncryption {
+  private key?: string;
+  private readonly passphaseProvider: () => string;
+  private readonly salt: string;
+
+  constructor(salt: string, passphaseProvider: () => string) {
+    this.passphaseProvider = passphaseProvider;
+    this.salt = salt;
+  }
+
+  private getKey(): string {
+    if (!this.key) {
+      this.key = generateSymmetricKeyFromPassphrase(this.salt, this.passphaseProvider());
+    }
+
+    return this.key;
+  }
 
   async decrypt(data: string): Promise<string> {
-    return decryptString(data, this.key);
+    return decryptString(data, this.getKey());
   }
 
   async encrypt(data: string): Promise<string> {
-    return encryptString(data, this.key);
+    return encryptString(data, this.getKey());
   }
-
 }

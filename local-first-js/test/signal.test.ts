@@ -1,5 +1,5 @@
 import { describe, it, expect} from "vitest";
-import { Accessor, Setter, createEffect, createRoot, createSignal} from "solid-js";
+import { createEffect, createRoot, createSignal} from "solid-js";
 
 describe("signal tests", () => {
     it("tests an effect on a signal", async () => {

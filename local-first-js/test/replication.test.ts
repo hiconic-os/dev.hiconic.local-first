@@ -1,12 +1,7 @@
 //import "../src/symbol-test"
 import { describe, it, expect } from "vitest";
 import { Resource } from "@dev.hiconic/gm_resource-model"
-import * as mm from "@dev.hiconic/gm_manipulation-model"
-import { reflection as refl, T } from "@dev.hiconic/tf.js_hc-js-api";
-import * as me from "../src/managed-entities";
-
-import { generateReplication } from "./replication-helper"
-
+import { generateReplication } from "./replication-helper.js"
 
 describe("replication tests", () => {
   it("stores and loads a transaction in indexedDB", async () => {
@@ -24,14 +19,14 @@ describe("replication tests", () => {
         return { name: "person1", address: "p3r50n1" }
       })
 
-      .addTransaction(entities => {
+      .addTransaction(_entities => {
         resource.tags.add("one");
         resource.tags.add("two");
 
         return { name: "person2", address: "p3r50n2" }
       })
       
-      .replicate((original, replicated) => {
+      .replicate((_original, replicated) => {
         const replicatedResource: Resource = replicated.get(globalId);
 
         expect(replicatedResource.name).toBe(resource.name);
@@ -53,7 +48,7 @@ describe("replication tests", () => {
 
       return { name: "person1", address: "p3r50n1" }
     })
-    .replicate((original, replicated) => {
+    .replicate((_original, replicated) => {
       const replicatedResource: Resource = replicated.get(globalId);
 
       expect(replicatedResource.name).toBe(resource.name);
