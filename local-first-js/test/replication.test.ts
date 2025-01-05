@@ -27,7 +27,7 @@ describe("replication tests", () => {
       })
       
       .replicate((_original, replicated) => {
-        const replicatedResource: Resource = replicated.get(globalId);
+        const replicatedResource = replicated.get(Resource, globalId);
 
         expect(replicatedResource.name).toBe(resource.name);
         expect(replicatedResource.mimeType).toBe(resource.mimeType);
@@ -49,7 +49,7 @@ describe("replication tests", () => {
       return { name: "person1", address: "p3r50n1" }
     })
     .replicate((_original, replicated) => {
-      const replicatedResource: Resource = replicated.get(globalId);
+      const replicatedResource = replicated.get(Resource, globalId);
 
       expect(replicatedResource.name).toBe(resource.name);
       expect(replicatedResource.mimeType).toBe(resource.mimeType);

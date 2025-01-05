@@ -1,7 +1,7 @@
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
 import { Accessor, createEffect, createSignal, Setter, Signal, onCleanup } from "solid-js";
-import { manipulation, reflection, session } from "@dev.hiconic/tf.js_hc-js-api";
+import { manipulation, reflection, session, T } from "@dev.hiconic/tf.js_hc-js-api";
 import { ManipulationBuffer } from "./manipulation-buffer.js";
 
 type NonFunctionKeys<T> = Exclude<{
@@ -22,6 +22,17 @@ export interface EntitySignal<E extends rM.GenericEntity> extends EntityRelatedS
   readonly get: Accessor<EntityManipulation<E>>;
 }
 
+export interface CollectionManipulation<E extends rM.GenericEntity, C> {
+  readonly entity: E;
+  readonly collection: C;
+  readonly manipulation?: mM.PropertyManipulation;
+}
+
+
+export interface EntityCollectionPropertySignal<E extends rM.GenericEntity, C> extends EntityRelatedSignal<E> {
+  readonly get: Accessor<CollectionManipulation<E, C>>;
+}
+
 export interface EntityPropertySignal<E extends rM.GenericEntity, V> extends EntityRelatedSignal<E>, Signal<V>  {
   readonly property: reflection.Property;
 }
@@ -29,6 +40,7 @@ export interface EntityPropertySignal<E extends rM.GenericEntity, V> extends Ent
 export interface EntitySignalBuilder<E extends rM.GenericEntity> {
   all(): EntitySignal<E>;
   property<K extends NonFunctionKeys<E>>(property: reflection.Property | K): EntityPropertySignal<E, E[K]>;
+  collectionProperty<K extends NonFunctionKeys<E>>(property: reflection.Property | K): EntityCollectionPropertySignal<E, E[K]>;
 }
 
 /** Reflects the manipulation buffer state, typically used for undo/redo/save functionality in UI (see {@link manipulationBufferSignal}) */
@@ -104,6 +116,20 @@ class EntitySignalImpl<E extends rM.GenericEntity> implements EntitySignal<E>, H
   }
 }
 
+class EntityCollectionPropertySignalImpl<E extends rM.GenericEntity, C> implements EntityCollectionPropertySignal<E, C>, HasDisposer {
+  readonly entity: E;
+  readonly get: Accessor<CollectionManipulation<E, C>>;
+  readonly set: Setter<CollectionManipulation<E, C>>; 
+  readonly disposer: () => void;
+  
+  constructor(entity: E, signal: Signal<CollectionManipulation<E, C>>, disposer: () => void) {
+    this.entity = entity;
+    this.get = signal[0];
+    this.set = signal[1];
+    this.disposer = disposer;
+  }
+}
+
 /** 
  * A ReactivityScope {@link ReactivityScope.signal creates} and manages the connection between hiconic entities from a {@link session.ManagedGmSession session} and 
  * {@link Signal solid-js signals}. It should be {@link ReactivityScope.close closed} when a solid-js component is {@link onCleanup cleaned up}.
@@ -112,6 +138,7 @@ class EntitySignalImpl<E extends rM.GenericEntity> implements EntitySignal<E>, H
 export class ReactivityScope {
   private session: session.ManagedGmSession;
   private propertySignals = new Map<string, EntityPropertySignalImpl<any, any>>();
+  private collectionPropertySignals = new Map<string, EntityCollectionPropertySignalImpl<any, any>>();
   private entitySignals = new Map<rM.GenericEntity, EntitySignalImpl<any>>();
   
   constructor(session: session.ManagedGmSession, autoClose = false) {
@@ -125,6 +152,8 @@ export class ReactivityScope {
     this.propertySignals.clear();
     this.entitySignals.forEach(s => s.disposer());
     this.entitySignals.clear();
+    this.collectionPropertySignals.forEach(s => s.disposer());
+    this.collectionPropertySignals.clear();
   } 
 
 
@@ -132,6 +161,7 @@ export class ReactivityScope {
     return {
       all: () => this.acquireEntitySignal(entity),
       property: <K extends NonFunctionKeys<E>>(property: reflection.Property | K) => this.propertySignal(entity, property),
+      collectionProperty: <K extends NonFunctionKeys<E>>(property: reflection.Property | K) => this.collectionPropertySignal(entity, property)
     };
   }
 
@@ -164,6 +194,52 @@ export class ReactivityScope {
     };
 
     return new EntitySignalImpl(entity, signal, disposer);
+  }
+
+  collectionPropertySignal<E extends rM.GenericEntity, C>(entity: E, property: reflection.Property | string): EntityCollectionPropertySignal<E, C> {
+    const refProp = typeof property == "string" ? 
+    entity.EntityType().getProperty(property as string) : 
+    property as reflection.Property;
+
+    return this.acquireCollectionPropertySignal(entity, refProp);
+  }
+
+  acquireCollectionPropertySignal<E extends rM.GenericEntity, C>(entity: E, property: reflection.Property): EntityCollectionPropertySignal<E, C> {
+    const key = entity.RuntimeId() + ":" + property.getName();
+    
+    let signal = this.collectionPropertySignals.get(key) as EntityCollectionPropertySignalImpl<E, C>;
+
+    if (signal !== undefined) return signal;
+
+    signal = this.newEntityCollectionPropertySignal<E,C>(entity, property);
+
+    this.collectionPropertySignals.set(key, signal);
+
+    return signal;
+  }
+
+  private newEntityCollectionPropertySignal<E extends rM.GenericEntity, C>(entity: E, property: reflection.Property): EntityCollectionPropertySignalImpl<E, C> {
+    const collection = property.get(entity) as C;
+    
+    const signal = createSignal<CollectionManipulation<E,C>>({ entity, collection });
+
+    const setValue = signal[1];
+
+    const listener: manipulation.ManipulationListener = {
+      onMan: m => {
+        const col = property.get(entity) as C;
+        setValue({ entity: entity, manipulation: m as mM.PropertyManipulation, collection: col})
+      }
+    };
+
+    const listeners = this.session.listeners().entityProperty(entity, property.getName());
+    listeners.add(listener);
+
+    const disposer = () => {
+      listeners.remove(listener);
+    };
+
+    return new EntityCollectionPropertySignalImpl(entity, signal, disposer);
   }
 
   propertySignal<E extends rM.GenericEntity, V>(entity: E, property: reflection.Property | string): EntityPropertySignal<E, V> {

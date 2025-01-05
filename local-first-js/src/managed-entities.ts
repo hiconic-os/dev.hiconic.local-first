@@ -152,9 +152,10 @@ export interface ManagedEntities {
 
     /**
      * Retrieves the {@link rM.GenericEntity entity} with the given globalId.
+     * @param type the type 
      * @param globalId the globalId of the entity
      */
-    get<E extends rM.GenericEntity>(globalId: string): E;
+    get<E extends rM.GenericEntity>(type: reflection.EntityType<E>, globalId: string): E;
 
     list<E extends rM.GenericEntity>(type: reflection.EntityType<E>): E[];
 
@@ -271,7 +272,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
         this.session.deleteEntity(entity)
     }
 
-    get<E extends rM.GenericEntity>(globalId: string): E {
+    get<E extends rM.GenericEntity>(type: reflection.EntityType<E>, globalId: string): E {
         return this.session.getEntitiesView().findEntityByGlobalId(globalId);
     }
 

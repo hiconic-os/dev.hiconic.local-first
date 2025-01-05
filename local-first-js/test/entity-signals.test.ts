@@ -88,6 +88,44 @@ describe("entity signal tests", () => {
             expect(collectedValues[1]).toBe(r1.mimeType);
         });
     });
+
+    it("binds an collection property signal and waits for it", async () => {
+        createRoot(async () => {
+            await Promise.resolve();
+
+            const entities = me.openEntities("test");
+            const r1 = entities.createX(Resource).withId("abc");
+            const r2 = entities.createX(Resource).withId("opq");
+
+            const scope = new ReactivityScope(entities.session);
+
+            const collectionPropertySignal = scope.signal(r1).collectionProperty("tags");
+
+            const collectedValues = new Array<string>();
+
+            createEffect(() => {
+                const { manipulation } = collectionPropertySignal.get();
+
+                if (mm.AddManipulation.isInstance(manipulation)) {
+                    const am = manipulation as mm.AddManipulation;
+                    for (const v of am.itemsToAdd.values())
+                        collectedValues.push(v as string);
+                }
+            });
+
+            // should be collected
+            r1.tags.add("one");
+            r1.tags.add("two");
+
+            // should not be collected
+            r2.tags.add("one");
+
+            expect(collectedValues.length).toBe(2);
+            expect(collectedValues[0]).toBe("one");
+            expect(collectedValues[1]).toBe("two");
+        });
+    });
+
     it("Tests the manipulation buffer signaling", async () => {
         createRoot(async () => {
             await Promise.resolve();

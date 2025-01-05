@@ -15,7 +15,7 @@ describe("managed entities", () => {
 
         const r1 = entities.createX(Resource).withId("abc");
 
-        const r1Again = entities.get(r1.globalId!);
+        const r1Again = entities.get(Resource, r1.globalId!);
 
         expect(r1).toBe(r1Again);
     });
@@ -143,7 +143,7 @@ describe("managed entities", () => {
         const entities = me.openEntities(createTestDbName("test"), {dataInitializers: [initializer]});
         await entities.load();
 
-        const r = entities.get(rid) as Resource;
+        const r = entities.get(Resource, rid);
 
         expect(r.name).toBe(name);
     });
