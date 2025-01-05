@@ -1,7 +1,7 @@
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
 import { Accessor, createEffect, createSignal, Setter, Signal, onCleanup } from "solid-js";
-import { manipulation, reflection, session, T } from "@dev.hiconic/tf.js_hc-js-api";
+import { manipulation, reflection, session } from "@dev.hiconic/tf.js_hc-js-api";
 import { ManipulationBuffer } from "./manipulation-buffer.js";
 
 type NonFunctionKeys<T> = Exclude<{

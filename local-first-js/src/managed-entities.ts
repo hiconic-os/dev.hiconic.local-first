@@ -272,7 +272,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
         this.session.deleteEntity(entity)
     }
 
-    get<E extends rM.GenericEntity>(type: reflection.EntityType<E>, globalId: string): E {
+    get<E extends rM.GenericEntity>(_type: reflection.EntityType<E>, globalId: string): E {
         return this.session.getEntitiesView().findEntityByGlobalId(globalId);
     }
 
