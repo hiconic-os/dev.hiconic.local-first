@@ -1,12 +1,14 @@
 //import "../src/symbol-test"
 import { describe, it, expect } from "vitest";
 import { Resource } from "@dev.hiconic/gm_resource-model"
+import { TransientSource } from "@dev.hiconic/gm_transient-resource-model"
 import { generateReplication } from "./replication-helper.js"
 
 describe("replication tests", () => {
   it("stores and loads a transaction in indexedDB", async () => {
 
     const globalId = "abc";
+    const now = new Date();
     let resource: Resource;
 
     await generateReplication()
@@ -19,9 +21,13 @@ describe("replication tests", () => {
         return { name: "person1", address: "p3r50n1" }
       })
 
-      .addTransaction(_entities => {
+      .addTransaction(entities => {
+        const source = entities.create(TransientSource);
+        source.useCase = "foobar";
         resource.tags.add("one");
         resource.tags.add("two");
+        resource.created = now;
+        resource.resourceSource = source;
 
         return { name: "person2", address: "p3r50n2" }
       })
@@ -33,6 +39,8 @@ describe("replication tests", () => {
         expect(replicatedResource.mimeType).toBe(resource.mimeType);
         expect(replicatedResource.tags.has("one")).toBeTruthy();
         expect(replicatedResource.tags.has("two")).toBeTruthy();
+        expect(replicatedResource.created).toStrictEqual(now);
+        expect(replicatedResource.resourceSource?.useCase).toBe("foobar");
       });
   });
   it("replicating compound manipulation", async () => {

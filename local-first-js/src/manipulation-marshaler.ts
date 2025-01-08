@@ -275,7 +275,7 @@ class ManipulationToJson extends Continuation {
         longType(v: long): LongTuple { return ["l", v.toString()]; },
         // TODO: ask Peter about presentation of enum
         enumType(v: lang.Enum<any>, t): EnumTuple { return ["E", t.getTypeSignature(), v.toString()]; },
-        entitType(v: rM.GenericEntity) { return ["E", (v as rM.GenericEntity).globalId]; },
+        entityType(v: rM.GenericEntity) { return ["E", (v as rM.GenericEntity).globalId]; },
 
         listType: (v: list<any>, t) => { return this.listToJson(t as reflection.ListType, v); },
         setType: (v: set<any>, t) => { return this.setToJson(t as reflection.SetType, v); },
