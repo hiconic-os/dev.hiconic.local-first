@@ -46,12 +46,21 @@ describe("replication tests", () => {
   it("replicating compound manipulation", async () => {
     const globalId = "abc";
     let resource: Resource;
+    const now = new Date();
 
     await generateReplication().addTransaction(entities => {
       entities.openNestedFrame().run(() => {
-        resource = entities.createX(Resource).withId(globalId);
-        resource.name = "Test Resource";
-        resource.mimeType = "text/plain";
+        entities.openNestedFrame().run(() => {
+          entities.openNestedFrame().run(() => {
+            resource = entities.createX(Resource).withId(globalId);
+            resource.name = "Test Resource";
+            resource.mimeType = "text/plain";
+          });
+          entities.openNestedFrame().run(() => {
+            resource.created = now;
+          });
+        });
+        resource.creator = "God";
       })
 
       return { name: "person1", address: "p3r50n1" }
@@ -61,6 +70,8 @@ describe("replication tests", () => {
 
       expect(replicatedResource.name).toBe(resource.name);
       expect(replicatedResource.mimeType).toBe(resource.mimeType);
+      expect(replicatedResource.created).toStrictEqual(now);
+      expect(replicatedResource.creator).toBe("God");
     });
   });
 });

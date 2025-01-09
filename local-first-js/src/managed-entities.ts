@@ -333,7 +333,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
                 if (this.encryption) {
                     diffAsStr = await this.encryption.decrypt(diffAsStr);
                 }
-
+                
                 if (this.security) {
                     const signerAddress = t.signer!.address;
                     if (!await this.security.verify(diffAsStr, t.signature, signerAddress))
@@ -367,6 +367,8 @@ class ManagedEntitiesImpl implements ManagedEntities {
         // serialize the manipulations (currently as XML)
         const marshaller = new ManipulationMarshaller();
         const serManis = await marshaller.marshalToString(manis);
+
+        console.log(serManis);
 
         // build a transaction record equipped with a new UUID, date and the serialized manipulations
         const transaction = {} as Transaction

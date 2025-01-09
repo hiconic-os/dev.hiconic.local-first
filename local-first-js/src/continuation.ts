@@ -25,7 +25,7 @@ class AccessiblePromise<T> {
 export abstract class Continuation {
     readonly asyncThreshold = 20;
 
-    private lastNode: ContinuationQueueNode = new ContinuationQueueNode();
+    private insertAfter?: ContinuationTaskNode<any>;
     private nextNode?: ContinuationTaskNode<any>;
     
     private readonly messageChannel = new MessageChannel();
@@ -38,16 +38,19 @@ export abstract class Continuation {
     }
 
     protected async wait(): Promise<void> {
+        if (!this.nextNode)
+            return; 
+        
         await this.promise.promise;
         this.promise = new AccessiblePromise<void>();
     }
 
     protected forEachOf<E>(iterable: Iterable<E>, consumer: (e: E) => void): void {
-        this.enqueue(new ContinuationTaskNode(iterable[Symbol.iterator](), consumer));
+        this.enqueue(iterable[Symbol.iterator](), consumer);
     }
 
     protected forEachOfIterator<E>(iterator: Iterator<E>, consumer: (e: E) => void): void {
-        this.enqueue(new ContinuationTaskNode(iterator, consumer));
+        this.enqueue(iterator, consumer);
     }
 
     protected forEachOfIterable<E>(iterable: lang.Iterable<E>, consumer: (e: E) => void): void {
@@ -58,13 +61,25 @@ export abstract class Continuation {
         this.forEachOfIterator(function *() { yield undefined }(), task);
     }
 
-    private enqueue(task: ContinuationTaskNode<any>): void {
-        this.lastNode.next = task;
-        this.lastNode = task;
+    private enqueue<E>(iterator: Iterator<E>, consumer: (e: E) => void): void {
 
-        if (this.nextNode == null) {
-            this.nextNode = task;
-            this.schedule();
+        while (true) {
+            const res = iterator.next();
+
+            if (res.done)
+                break;
+
+            const node = new ContinuationTaskNode(res.value, consumer);
+
+            if (this.insertAfter) {
+                node.next = this.insertAfter.next;
+                this.insertAfter.next = node;
+                this.insertAfter = node;
+            }
+            else {
+                this.nextNode = this.insertAfter = node;
+                this.schedule();
+            }
         }
     }
 
@@ -76,29 +91,21 @@ export abstract class Continuation {
         try {
             let startTime = Date.now();
 
-            let node = this.nextNode;
             const threshold = this.asyncThreshold;
 
-            while (node != null) {
-                const {it, consumer} = node;
+            while (this.nextNode) {
+                const node = this.nextNode;
+                node.consumer(node.value);
+                this.insertAfter = this.nextNode = node.next;
 
-                while (true) {
-                    const res = it.next();
+                const curTime = Date.now();
 
-                    if (res.done)
-                        break;
-
-                    consumer(res.value);
-
-                    const curTime = Date.now();
-
-                    if ((curTime - startTime) > threshold) {
-                        this.schedule();
-                        return;
-                    }
+                if ((curTime - startTime) > threshold) {
+                    this.schedule();
+                    return;
                 }
 
-                node = this.nextNode = node.next;
+                
             }
 
             // the whole process has ended
@@ -110,17 +117,13 @@ export abstract class Continuation {
     }
 }
 
-class ContinuationQueueNode {
+class ContinuationTaskNode<E> {
     next?: ContinuationTaskNode<any>;
-}
-
-class ContinuationTaskNode<E> extends ContinuationQueueNode {
-    readonly it: Iterator<E>;
+    readonly value: E;
     readonly consumer: (e: E) => void;
     
-    constructor(it: Iterator<E>, consumer: (e: E) => void) {
-        super();
-        this.it = it;
+    constructor(value: E, consumer: (e: E) => void) {
+        this.value = value;
         this.consumer = consumer;
     }
 }
