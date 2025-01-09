@@ -268,15 +268,13 @@ export class ReactivityScope {
     const signal = createSignal<V>(property.get(entity));
     const [value, setValue] = signal;
 
-    let skipNextReactivity = true;
-
     createEffect(() => {
       const v = value();
 
-      if (skipNextReactivity) {
-        skipNextReactivity = false;
+      const existingValue = property.get(entity);
+
+      if (existingValue === v)
         return;
-      }
 
       property.set(entity, v);
     });
@@ -284,9 +282,7 @@ export class ReactivityScope {
     const listener: manipulation.ManipulationListener = {
       onMan: m => {
         const cvm = m as mM.ChangeValueManipulation;
-        const v = cvm.newValue! as any;
-        //const v: Exclude<V, Function> = cvm.newValue! as any;
-        skipNextReactivity = true;
+        const v = cvm.newValue as Exclude<V, Function>;
         setValue(v);
       }
     };
