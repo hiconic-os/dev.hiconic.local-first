@@ -30,9 +30,6 @@
   "files": [
     "dist"
   ],
-  "sideEffects": [
-    "./dist/manipulation-marshaler.js"
-  ],
   "exports": {
     ".": {
       "types": "./dist/local-first.d.ts",
