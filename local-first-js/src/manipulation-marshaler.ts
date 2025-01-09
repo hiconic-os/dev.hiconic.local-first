@@ -265,23 +265,23 @@ class ManipulationToJson extends Continuation {
     }
 
     private jsonExperts: Experts<(v: any, t: reflection.GenericModelType) => any> = {
-        objectType: (v, t) => { return this.valueToJson(t.getActualType(v), v); },
-        stringType(v: string): string { return v; },
-        booleanType(v: boolean): boolean { return v; },
-        floatType(v: float): FloatTuple { return ["f", v.valueOf()]; },
-        doubleType(v: number): DoubleTuple { return ["d", v]; },
-        decimalType(v: decimal): DecimalTuple { return ["D", v.toString()]; },
-        integerType(v: integer): integer { return v; },
-        longType(v: long): LongTuple { return ["l", v.toString()]; },
+        "objectType": (v, t) => { return this.valueToJson(t.getActualType(v), v); },
+        "stringType": (v: string): string => { return v; },
+        "booleanType": (v: boolean): boolean => { return v; },
+        "floatType": (v: float): FloatTuple => { return ["f", v.valueOf()]; },
+        "doubleType": (v: number): DoubleTuple => { return ["d", v]; },
+        "decimalType": (v: decimal): DecimalTuple => { return ["D", v.toString()]; },
+        "integerType": (v: integer): integer => { return v; },
+        "longType": (v: long): LongTuple => { return ["l", v.toString()]; },
         // TODO: ask Peter about presentation of enum
-        enumType(v: lang.Enum<any>, t): EnumTuple { return ["E", t.getTypeSignature(), v.toString()]; },
-        entityType(v: rM.GenericEntity) { return ["E", (v as rM.GenericEntity).globalId]; },
+        "enumType": (v: lang.Enum<any>, t): EnumTuple => { return ["E", t.getTypeSignature(), v.toString()]; },
+        "entityType": (v: rM.GenericEntity) => { return ["E", (v as rM.GenericEntity).globalId]; },
 
-        listType: (v: list<any>, t) => { return this.listToJson(t as reflection.ListType, v); },
-        setType: (v: set<any>, t) => { return this.setToJson(t as reflection.SetType, v); },
-        mapType: (v: map<any, any>, t): CollectionTuple => { return this.mapToJson(t as reflection.MapType, v); },
+        "listType": (v: list<any>, t) => { return this.listToJson(t as reflection.ListType, v); },
+        "setType": (v: set<any>, t) => { return this.setToJson(t as reflection.SetType, v); },
+        "mapType": (v: map<any, any>, t): CollectionTuple => { return this.mapToJson(t as reflection.MapType, v); },
 
-        dateType(v: date): DateTuple {
+        "dateType": (v: date): DateTuple => {
             return ["t",
                 v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate(),
                 v.getUTCHours(), v.getUTCMinutes(), v.getUTCSeconds(), v.getUTCMilliseconds()];
@@ -389,7 +389,7 @@ class JsonToManipulation extends Continuation {
     }
 
     private manipulationExperts: Experts<(json: any[], consumer: (m: Manipulation) => void) => void> = {
-        ["*"]: (json: any[], consumer: (m: CompoundManipulation) => void): void => {
+        "*": (json: any[], consumer: (m: CompoundManipulation) => void): void => {
             const m = CompoundManipulation.create();
             const manipulations = m.compoundManipulationList;
             const adder = manipulations.push.bind(manipulations);
@@ -400,21 +400,21 @@ class JsonToManipulation extends Continuation {
             consumer(m);
         },
 
-        [">"]: (json: any[], consumer: (m: InstantiationManipulation) => void): void => {
+        ">": (json: any[], consumer: (m: InstantiationManipulation) => void): void => {
             const tuple = json as InstantiationTuple;
             const m = InstantiationManipulation.create();
             m.entity = this.entity(tuple[1], tuple[2]);
             consumer(m);
         },
 
-        ["<"]: (json: any[], consumer: (m: DeleteManipulation) => void): void => {
+        "<": (json: any[], consumer: (m: DeleteManipulation) => void): void => {
             const tuple = json as DeleteTuple;
             const m = DeleteManipulation.create();
             m.entity = this.entity(tuple[1]);
             consumer(m);
         },
 
-        ["@"]: (json: any[], consumer: (m: PropertyManipulation) => void): void => {
+        "@": (json: any[], consumer: (m: PropertyManipulation) => void): void => {
             const tuple = json as PropertyRelatedTuple;
             const id = tuple[1];
             const entity = this.entity(id);
@@ -457,7 +457,7 @@ class JsonToManipulation extends Continuation {
 
     private propertyExperts: Experts<(e: rM.GenericEntity, o: object, consumer: (m: PropertyManipulation) => void) => void> = {
 
-        ["="]: (e, o, consumer) => {
+        "=": (e, o, consumer) => {
             this.forEachOf(Object.entries(o), entry => {
                 const m = ChangeValueManipulation.create();
                 m.owner = this.entityProperty(e, entry[0]);
@@ -466,7 +466,7 @@ class JsonToManipulation extends Continuation {
             });
         },
 
-        ["+"]: (e, o, consumer) => {
+        "+": (e, o, consumer) => {
             this.forEachOf(Object.entries(o), entry => {
                 const m = AddManipulation.create();
                 m.owner = this.entityProperty(e, entry[0]);
@@ -479,7 +479,7 @@ class JsonToManipulation extends Continuation {
             });
         },
 
-        ["-"]: (e, o, consumer) => {
+        "-": (e, o, consumer) => {
             this.forEachOf(Object.entries(o), entry => {
                 const m = RemoveManipulation.create();
                 m.owner = this.entityProperty(e, entry[0]);
@@ -491,7 +491,7 @@ class JsonToManipulation extends Continuation {
             });
         },
 
-        ["~"]: (e, o, consumer) => {
+        "~": (e, o, consumer) => {
             const properties = o as string[];
 
             this.forEachOf(properties, property => {
@@ -503,10 +503,10 @@ class JsonToManipulation extends Continuation {
     }
 
     private valueExperts: Experts<(json: any) => ValueWithType<any>> = {
-        string(json): ValueWithType<string> { return [json, reflection.STRING]; },
-        boolean(json): ValueWithType<boolean> { return [json, reflection.BOOLEAN]; },
-        number(json): ValueWithType<number> { return [json, reflection.INTEGER]; },
-        object: (json): ValueWithType<any> => {
+        "string": (json): ValueWithType<string> => { return [json, reflection.STRING]; },
+        "boolean": (json): ValueWithType<boolean> => { return [json, reflection.BOOLEAN]; },
+        "number": (json): ValueWithType<number> => { return [json, reflection.INTEGER]; },
+        "object": (json): ValueWithType<any> => {
             const op: string = json[0];
             return this.exValueExperts[op](json);
         }
@@ -514,13 +514,13 @@ class JsonToManipulation extends Continuation {
 
     private exValueExperts: Experts<(json: any[]) => ValueWithType<any>> = {
         // base types: f = float, d = double, l = long,
-        f(json): ValueWithType<float> { return [new T.Float((json as FloatTuple)[1]), reflection.FLOAT]; },
-        d(json): ValueWithType<double> { return [new T.Double((json as DoubleTuple)[1]), reflection.DOUBLE]; },
-        l(json): ValueWithType<long> { return [BigInt((json as LongTuple)[1]), reflection.LONG]; },
-        D(json): ValueWithType<decimal> { return [math.bigDecimalFromString((json as DecimalTuple)[1]), reflection.DECIMAL]; },
-        t(json): ValueWithType<date> { return [new Date(Date.UTC.apply(null, json.slice(1) as [number, number, number, number, number, number, number])), reflection.DATE]; },
+        "f": (json): ValueWithType<float> => { return [new T.Float((json as FloatTuple)[1]), reflection.FLOAT]; },
+        "d": (json): ValueWithType<double> => { return [new T.Double((json as DoubleTuple)[1]), reflection.DOUBLE]; },
+        "l": (json): ValueWithType<long> => { return [BigInt((json as LongTuple)[1]), reflection.LONG]; },
+        "D": (json): ValueWithType<decimal> => { return [math.bigDecimalFromString((json as DecimalTuple)[1]), reflection.DECIMAL]; },
+        "t": (json): ValueWithType<date> => { return [new Date(Date.UTC.apply(null, json.slice(1) as [number, number, number, number, number, number, number])), reflection.DATE]; },
 
-        L: (json): ValueWithType<list<any>> => {
+        "L": (json): ValueWithType<list<any>> => {
             T.Decimal
 
             const list = new T.Array<any>();
@@ -535,7 +535,7 @@ class JsonToManipulation extends Continuation {
         },
 
         // decode Set
-        S: (json): ValueWithType<set<any>> => {
+        "S": (json): ValueWithType<set<any>> => {
             const set = new T.Set<any>();
             const it = json[Symbol.iterator]();
 
@@ -548,7 +548,7 @@ class JsonToManipulation extends Continuation {
         },
 
         // decode Map
-        M: (json): ValueWithType<map<any, any>> => {
+        "M": (json): ValueWithType<map<any, any>> => {
             const map = new T.Map<any, any>();
             const it = json[Symbol.iterator]();
 
@@ -571,7 +571,7 @@ class JsonToManipulation extends Continuation {
             return [map, reflection.MAP];
         },
 
-        E: (json): ValueWithType<rM.GenericEntity> => {
+        "E": (json): ValueWithType<rM.GenericEntity> => {
             const id = (json as EntityTuple)[1];
             const ref = vM.GlobalEntityReference.create();
             ref.refId = id;
@@ -579,7 +579,7 @@ class JsonToManipulation extends Continuation {
             return [ref, rM.GenericEntity];
         },
 
-        e: (json): ValueWithType<lang.Enum<any>> => {
+        "e": (json): ValueWithType<lang.Enum<any>> => {
             const tuple = json as EnumTuple;
             const type = hc.getTypeReflection().getEnumTypeBySignature(tuple[1]);
             return [type.findConstant(tuple[2]), type];
