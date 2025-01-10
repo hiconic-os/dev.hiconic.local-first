@@ -54,6 +54,10 @@
     "./manipulation-marshaler": {
       "types": "./dist/manipulation-marshaler.d.ts",
       "default": "./dist/manipulation-marshaler.js"
+    },
+    "./crypto": {
+      "types": "./dist/crypto.d.ts",
+      "default": "./dist/crypto.js"
     }
   },
   "repository": {
