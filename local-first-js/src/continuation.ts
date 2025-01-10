@@ -95,8 +95,9 @@ export abstract class Continuation {
 
             while (this.nextNode) {
                 const node = this.nextNode;
+                this.insertAfter = node;
                 node.consumer(node.value);
-                this.insertAfter = this.nextNode = node.next;
+                this.nextNode = node.next;
 
                 const curTime = Date.now();
 
@@ -119,6 +120,7 @@ export abstract class Continuation {
 
 class ContinuationTaskNode<E> {
     next?: ContinuationTaskNode<any>;
+    
     readonly value: E;
     readonly consumer: (e: E) => void;
     
