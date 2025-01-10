@@ -86,27 +86,29 @@ export class MockManagedEntityAuth implements ManagedEntitiesAuth {
 
 export class ManagedEntityEncryption implements ManagedEntitiesEncryption {
   private key?: string;
-  private readonly passphaseProvider: () => string;
+  private readonly passphraseProvider: () => Promise<string>;
   private readonly salt: string;
 
-  constructor(salt: string, passphaseProvider: () => string) {
-    this.passphaseProvider = passphaseProvider;
+  constructor(salt: string, passphraseProvider: () => Promise<string>) {
+    this.passphraseProvider = passphraseProvider;
     this.salt = salt;
   }
 
-  private getKey(): string {
+  private async getKey(): Promise<string> {
     if (!this.key) {
-      this.key = generateSymmetricKeyFromPassphrase(this.salt, this.passphaseProvider());
+      const passphrase = await this.passphraseProvider();
+      this.key = generateSymmetricKeyFromPassphrase(this.salt, passphrase);
     }
 
     return this.key;
   }
 
   async decrypt(data: string): Promise<string> {
-    return decryptString(data, this.getKey());
+
+    return decryptString(data, await this.getKey());
   }
 
   async encrypt(data: string): Promise<string> {
-    return encryptString(data, this.getKey());
+    return encryptString(data, await this.getKey());
   }
 }
