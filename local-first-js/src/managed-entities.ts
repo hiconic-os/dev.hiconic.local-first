@@ -368,8 +368,6 @@ class ManagedEntitiesImpl implements ManagedEntities {
         const marshaller = new ManipulationMarshaller();
         const serManis = await marshaller.marshalToString(manis);
 
-        console.log(serManis);
-
         // build a transaction record equipped with a new UUID, date and the serialized manipulations
         const transaction = {} as Transaction
 
