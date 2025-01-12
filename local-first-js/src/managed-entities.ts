@@ -125,6 +125,8 @@ export interface ManagedEntities {
      */
     manipulationBuffer: ManipulationBuffer;
 
+    encryption?: ManagedEntitiesEncryption;
+
     /**
      * Creates a {@link ManagedEntities.session|session}-associated {@link rM.GenericEntity entity} with a globalId initialized to a random UUID.
      * The default initializers of the entity will be applied.
