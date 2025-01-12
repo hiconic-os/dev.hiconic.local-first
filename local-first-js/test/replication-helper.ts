@@ -13,7 +13,7 @@ export interface ReplicationTestBuilder {
 }
 
 const auth = new MockManagedEntityAuth();
-const encryption = new ManagedEntityEncryption("replication-test", async () => "pwd");
+const encryption = new ManagedEntityEncryption("replication-test", () => "pwd");
 
 function createTestDbName(name: string): string {
     return name + "-" + util.newUuid();
