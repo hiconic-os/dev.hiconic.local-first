@@ -99,11 +99,15 @@ export class ManagedEntityEncryption implements ManagedEntitiesEncryption {
     const passphrase = this.passphraseProvider();
 
     if (!this.key || this.prevPassphrase !== passphrase) {
-      this.key = generateSymmetricKeyFromPassphrase(this.salt, passphrase);
+      this.key = this.getKeyForPassphrase(passphrase);
       this.prevPassphrase = passphrase;
     }
 
     return this.key;
+  }
+
+  private getKeyForPassphrase(passphrase: string): string {
+      return generateSymmetricKeyFromPassphrase(this.salt, passphrase);
   }
 
   async decrypt(data: string): Promise<string> {
@@ -112,5 +116,13 @@ export class ManagedEntityEncryption implements ManagedEntitiesEncryption {
 
   async encrypt(data: string): Promise<string> {
     return encryptString(data, this.getKey());
+  }
+
+  decryptWithPassphrase(data: string, passphrase: string): string {
+    return decryptString(data, this.getKeyForPassphrase(passphrase));
+  }
+
+  encryptWithPassphrase(data: string, passphrase: string): string {
+    return encryptString(data, this.getKeyForPassphrase(passphrase));
   }
 }
