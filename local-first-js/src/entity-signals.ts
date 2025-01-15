@@ -280,7 +280,7 @@ export class ReactivityScope {
     });
 
     const listener: manipulation.ManipulationListener = {
-      onMan: m => {
+      onMan: async m => {
         const cvm = m as mM.ChangeValueManipulation;
         const v = cvm.newValue as Exclude<V, Function>;
         setValue(v);

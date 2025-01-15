@@ -1,8 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { Resource } from "@dev.hiconic/gm_resource-model"
-import { ChangeValueManipulation, CompoundManipulation, InstantiationManipulation } from "@dev.hiconic/gm_manipulation-model"
-import { LocalEntityProperty } from "@dev.hiconic/gm_owner-model"
+import { ChangeValueManipulation, CompoundManipulation, InstantiationManipulation } from "@dev.hiconic/gm_manipulation-model";
+import { LocalEntityProperty } from "@dev.hiconic/gm_owner-model";
+import { Resource } from "@dev.hiconic/gm_resource-model";
 import { hc } from "@dev.hiconic/tf.js_hc-js-api";
+import { describe, expect, it } from "vitest";
 import * as me from "../src/managed-entities.js";
 
 function createTestDbName(name: string): string {
@@ -146,5 +146,30 @@ describe("managed entities", () => {
         const r = entities.get(Resource, rid);
 
         expect(r.name).toBe(name);
+    });
+
+    it("commit manipulation index", async () => {
+
+        const entities = me.openEntities(createTestDbName("test"));
+        
+        const resource = entities.create(Resource);
+
+        const index = entities.manipulationBuffer.getCommitManipulationIndex();
+
+        expect(index.has(resource)).toBeTruthy();
+        const manis = [...index.get(resource)!];
+        expect(InstantiationManipulation.isInstance(manis[0])).toBeTruthy();
+        
+        resource.name = "71N4";
+        
+        expect(index.has(resource)).toBeTruthy();
+        const manis2 = [...index.get(resource)!];
+        expect(InstantiationManipulation.isInstance(manis2[0])).toBeTruthy();
+        expect(ChangeValueManipulation.isInstance(manis2[1])).toBeTruthy();
+        
+        entities.manipulationBuffer.undo();
+        entities.manipulationBuffer.undo();
+
+        expect(index.has(resource)).toBeFalsy();
     });
   });

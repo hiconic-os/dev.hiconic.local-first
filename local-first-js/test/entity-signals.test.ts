@@ -126,7 +126,7 @@ describe("entity signal tests", () => {
         });
     });
 
-    it("Tests the manipulation buffer signaling", async () => {
+    it("manipulation buffer signaling", async () => {
         createRoot(async () => {
             await Promise.resolve();
 
@@ -181,6 +181,56 @@ describe("entity signal tests", () => {
             expect(getBufferState().redoCount).toBe(0);
             expect(getBufferState().canCommit).toBeFalsy();
 
+        });
+    });
+
+    it("part of commit testing", async () => {
+        createRoot(async () => {
+            await Promise.resolve();
+
+            const entities = me.openEntities("test",);
+            const manipulationBuffer = entities.manipulationBuffer;
+
+            let partOfCommit: boolean | undefined;
+
+            const resource = entities.create(Resource);
+            manipulationBuffer.undo();
+
+            const rs = new ReactivityScope(entities.session);
+
+            const getResource = rs.signal(resource).all().get;
+
+            createEffect(() => {
+                const r = getResource();
+
+                partOfCommit = manipulationBuffer.isPartOfCommit(r.entity);
+            });
+
+            manipulationBuffer.undo();
+            expect(partOfCommit).toBeFalsy();
+
+            manipulationBuffer.redo();
+            expect(partOfCommit).toBeTruthy();
+            
+            resource.name = "test";
+            expect(partOfCommit).toBeTruthy();
+            
+            manipulationBuffer.undo();
+            expect(partOfCommit).toBeTruthy();
+            
+            manipulationBuffer.undo();
+            expect(partOfCommit).toBeFalsy();
+            
+            manipulationBuffer.redo();
+            expect(partOfCommit).toBeTruthy();
+            
+            manipulationBuffer.redo();
+            expect(partOfCommit).toBeTruthy();
+
+            expect(manipulationBuffer.getCommitManipulationIndex().get(resource)?.size).toBe(2);
+            
+            resource.name = "Other";
+            expect(manipulationBuffer.getCommitManipulationIndex().get(resource)?.size).toBe(3);
         });
     });
 });

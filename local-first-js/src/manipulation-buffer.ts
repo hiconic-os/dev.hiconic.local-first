@@ -1,5 +1,7 @@
 import { session } from "@dev.hiconic/tf.js_hc-js-api";
 import * as mM from "@dev.hiconic/gm_manipulation-model";
+import { GenericEntity } from "@dev.hiconic/gm_root-model"
+import { LocalEntityProperty } from "@dev.hiconic/gm_owner-model"
 
 export type ManipulationBufferUpdateListener = (buffer: ManipulationBuffer) => void;
 
@@ -45,6 +47,10 @@ export interface ManipulationBuffer {
      * Returns the manipulations in order that currently would be subject for a commit. The are identical to the manipulations than can be undone.
      */
     getCommitManipulations(): mM.Manipulation[];
+
+    getCommitManipulationIndex(): Map<GenericEntity, Set<mM.Manipulation>>;
+
+    isPartOfCommit(entity: GenericEntity): boolean;
 }
 
 export interface ManipulationFrame {
@@ -104,10 +110,12 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
     private suspendTrackingCount = 0;
     private undoing = false;
     private redoing = false;
+    private readonly commitManipulationIndex = new Map<GenericEntity, Set<mM.Manipulation>>();
+    private runAfterNextManipulation?: () => void;
 
     constructor(session: session.ManagedGmSession) {
         this.session = session;
-        this.session.listeners().add({onMan: m => this.onMan(m)});
+        this.session.listeners().prioritized().add({onMan: m => this.onMan(m)});
     }
 
     suspendTracking(): void {
@@ -134,7 +142,10 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
 
         this.redoing = true;
         try {
-            this.applyManipulationUntracked(m);
+            this.traverseManipulation(m, (atomicManipulation) => {
+                this.runAfterNextManipulation = () => this.addToIndex(atomicManipulation);
+                this.applyManipulationUntracked(atomicManipulation);
+            });
         }
         finally {
             this.redoing = false;
@@ -151,13 +162,28 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
 
         this.undoing = true;
         try {
-            this.applyManipulationUntracked(m.inverseManipulation!);
+            this.traverseManipulation(m.inverseManipulation!, (atomicManipulation) => {
+                this.runAfterNextManipulation = () => this.removeFromIndex(atomicManipulation.inverseManipulation!);
+                this.applyManipulationUntracked(atomicManipulation);
+            });
         }
         finally {
             this.undoing = false;
         }
 
         this.notifyListeners();
+    }
+
+    private traverseManipulation(manipulation: mM.Manipulation, visitor: (m: mM.AtomicManipulation) => void) {
+        if (mM.CompoundManipulation.isInstance(manipulation)) {
+            const compound = manipulation as mM.CompoundManipulation;
+            for (const m of compound.compoundManipulationList) {
+                this.traverseManipulation(m, visitor);
+            }
+        }
+        else {
+            visitor(manipulation as mM.AtomicManipulation);
+        }
     }
 
     isUndoing(): boolean {
@@ -175,6 +201,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
     clear(): void {
         this.manipulations.length = 0;
         this.index = 0;
+        this.commitManipulationIndex.clear();
         this.notifyListeners();
     }
 
@@ -214,11 +241,68 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
             this.listeners.splice(index, 1);
     }
 
-    private onMan(manipulation: mM.Manipulation): void {
-        if (this.isReplicating())
-            return
+    private addToIndex(manipulation: mM.Manipulation) {
+        const entity = this.extractRelatedEntity(manipulation);
 
+        if (!entity)
+            return;
+
+        let manipulations = this.commitManipulationIndex.get(entity);
+        if (!manipulations) {
+            manipulations = new Set<mM.Manipulation>();
+            this.commitManipulationIndex.set(entity, manipulations);
+        }
+        manipulations.add(manipulation);
+    }
+
+    private removeFromIndex(manipulation: mM.Manipulation) {
+        const entity = this.extractRelatedEntity(manipulation);
+
+        if (!entity)
+            return;
+        let manipulations = this.commitManipulationIndex.get(entity);
+        if (!manipulations)
+            return;
+
+        manipulations.delete(manipulation);
+
+        if (manipulations.size == 0)
+            this.commitManipulationIndex.delete(entity);
+    }
+
+    getCommitManipulationIndex(): Map<GenericEntity, Set<mM.Manipulation>> {
+        return this.commitManipulationIndex;
+    }
+
+    isPartOfCommit(entity: GenericEntity): boolean {
+        return this.commitManipulationIndex.has(entity);
+    }
+
+    private onMan(manipulation: mM.Manipulation): void {
+        if (this.runAfterNextManipulation) {
+            this.runAfterNextManipulation();
+            this.runAfterNextManipulation = undefined;
+        }
+
+        if (this.isReplicating())
+            return;
+
+        this.addToIndex(manipulation);
         this.currentFrame.record(manipulation);
+    }
+
+    private extractRelatedEntity(manipulation: mM.Manipulation): GenericEntity | null {
+        if (mM.LifecycleManipulation.isInstance(manipulation)) {
+            const lm = manipulation as mM.LifecycleManipulation;
+            return lm.entity;
+        }
+        else if (mM.PropertyManipulation.isInstance(manipulation)) {
+            const pm = manipulation as mM.PropertyManipulation;
+            const lep = pm.owner as LocalEntityProperty;
+            return lep.entity;
+        }
+
+        return null!;
     }
 
     record(manipulation: mM.Manipulation): void {
