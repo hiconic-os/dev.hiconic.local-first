@@ -7,6 +7,10 @@ import { ManipulationMarshaller } from "./manipulation-marshaler.js";
 
 export type { ManipulationBuffer, ManipulationBufferUpdateListener };
 
+export const DECRYPTION_KEY_ERROR = {
+    message: "Key was wrong"
+} as const;
+
 export type ManagedEntitiesConfig = {
     auth?: ManagedEntitiesAuth, 
     encryption?: ManagedEntitiesEncryption,
@@ -333,7 +337,12 @@ class ManagedEntitiesImpl implements ManagedEntities {
                 let diffAsStr = t.payload as string;
 
                 if (this.encryption) {
-                    diffAsStr = await this.encryption.decrypt(diffAsStr);
+                    const decrypted = await this.encryption.decrypt(diffAsStr);;
+
+                    if (decrypted == "")
+                        throw DECRYPTION_KEY_ERROR;
+
+                    diffAsStr = decrypted;
                 }
                 
                 if (this.security) {
