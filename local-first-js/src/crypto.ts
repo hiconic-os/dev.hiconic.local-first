@@ -66,6 +66,11 @@ export function decryptString(encryptedData: string, key: string): string {
 
   return decrypted.toString(CryptoJS.enc.Utf8); // Entschlüsselte Zeichenkette zurückgeben
 }
+
+// generates SHA256 a hash for a string content
+export function hashSha256(content: string): string {
+  return CryptoJS.SHA256(content).toString(CryptoJS.enc.Hex);
+}
     
 export class MockManagedEntityAuth implements ManagedEntitiesAuth {
   async sign(data: string, signerAddress: string): Promise<string> {
@@ -81,6 +86,10 @@ export class MockManagedEntityAuth implements ManagedEntitiesAuth {
 
   async hash(data: string): Promise<string> {
     return CryptoJS.MD5(data).toString(CryptoJS.enc.Hex);
+  }
+
+  getSigningContextName(): string {
+    return "MockApp";
   }
 }
 

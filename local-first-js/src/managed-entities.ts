@@ -3,12 +3,17 @@ import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
 import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer, ManipulationFrame } from "./manipulation-buffer.js";
 import { ManipulationMarshaller } from "./manipulation-marshaler.js";
+import { hashSha256 } from "./crypto.js";
 
 
 export type { ManipulationBuffer, ManipulationBufferUpdateListener };
 
-export const DECRYPTION_KEY_ERROR = {
+export const ERROR_DECRYPTION_KEY = {
     message: "Key was wrong"
+} as const;
+
+export const ERROR_WRONG_SIGNATURE = {
+    message: "Signature was wrong"
 } as const;
 
 export type ManagedEntitiesConfig = {
@@ -52,6 +57,8 @@ export interface ManagedEntitiesAuth {
      * @param data the data to be hashed
      */
     hash(data: string): Promise<string>;
+
+    getSigningContextName(): string;
 }
 
 export interface ManagedEntitiesEncryption {
@@ -321,6 +328,12 @@ class ManagedEntitiesImpl implements ManagedEntities {
         }
     }
 
+    private createTransactionDataSigningMessage(id: string, sha256Hash: string): string {
+        return `You are about to save data changes in ${this.security?.getSigningContextName()}.\n` +
+               `Please sign this message to confirm the integrity of these changes.\n` +
+               `The record ID is ${id}, and its hash is ${sha256Hash}.`;
+    }
+    
     async load(): Promise<void> {
         // get database and fetch all transaction records from it
         let transactions = await (await this.getDatabase()).fetch()
@@ -340,16 +353,29 @@ class ManagedEntitiesImpl implements ManagedEntities {
                     const decrypted = await this.encryption.decrypt(diffAsStr);;
 
                     if (decrypted == "")
-                        throw DECRYPTION_KEY_ERROR;
+                        throw ERROR_DECRYPTION_KEY;
 
                     diffAsStr = decrypted;
                 }
+
                 
                 if (this.security) {
-                    const signerAddress = t.signer!.address;
-                    if (!await this.security.verify(diffAsStr, t.signature, signerAddress))
-                        // TODO: turn this into proper reasoning
-                        throw new Error("wrong signature");
+                    if (t.version == 1) {
+                        const signerAddress = t.signer!.address;
+                        if (!await this.security.verify(diffAsStr, t.signature, signerAddress))
+                            // TODO: turn this into proper reasoning
+                            throw ERROR_WRONG_SIGNATURE;
+                    }
+                    else if (t.version == 2) {
+                        const hash = hashSha256(diffAsStr);
+                        const message = this.createTransactionDataSigningMessage(t.id, hash);
+                        const signerAddress = t.signer!.address;
+                        if (!await this.security.verify(message, t.signature, signerAddress))
+                            // TODO: turn this into proper reasoning
+                            throw ERROR_WRONG_SIGNATURE;
+                    }
+                    else
+                        throw new Error("Unsupported CRDT-Transaction version: " + t.version)
                 }
 
                 const payload = JSON.parse(diffAsStr) as TransactionPayload;
@@ -382,7 +408,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
         // build a transaction record equipped with a new UUID, date and the serialized manipulations
         const transaction = {} as Transaction
 
-        transaction.version = 1;
+        transaction.version = 2;
         transaction.id = util.newUuid();
         transaction.date = new Date().getTime();
         transaction.deps = [];
@@ -398,8 +424,9 @@ class ManagedEntitiesImpl implements ManagedEntities {
             if (!signer) 
                 throw new Error("signer argument is required when working with security");
 
-            const hash = await this.security.hash(diff);
-            const signature = await this.security.sign(diff, signer.address);
+            const hash = hashSha256(diff);
+            const message = this.createTransactionDataSigningMessage(transaction.id, hash);
+            const signature = await this.security.sign(message, signer.address);
             
             transaction.signature = signature;
             transaction.hash = hash;
