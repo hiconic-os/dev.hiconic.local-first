@@ -336,8 +336,8 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
     private createTransactionDataSigningMessageV3(id: string, sha256Hash: string): string {
         return `${this.security?.getSigningContextName()}: ` +
-                `Sign this message to confirm integrity of ` +
-                `changes to be saved: ID: ${id}, HASH: ${sha256Hash}.`;    
+                `Sign this message to confirm integrity of changes to be saved.\n` +
+                `ID: ${id}, HASH: ${sha256Hash}.`;    
     }
     
     async load(): Promise<void> {
