@@ -328,10 +328,16 @@ class ManagedEntitiesImpl implements ManagedEntities {
         }
     }
 
-    private createTransactionDataSigningMessage(id: string, sha256Hash: string): string {
+    private createTransactionDataSigningMessageV2(id: string, sha256Hash: string): string {
         return `You are about to save data changes in ${this.security?.getSigningContextName()}.\n` +
                `Please sign this message to confirm the integrity of these changes.\n` +
                `The record ID is ${id}, and its hash is ${sha256Hash}.`;
+    }
+
+    private createTransactionDataSigningMessageV3(id: string, sha256Hash: string): string {
+        return `${this.security?.getSigningContextName()}: ` +
+                `Sign this message to confirm integrity of ` +
+                `changes to be saved: ID: ${id}, HASH: ${sha256Hash}.`;    
     }
     
     async load(): Promise<void> {
@@ -368,7 +374,15 @@ class ManagedEntitiesImpl implements ManagedEntities {
                     }
                     else if (t.version == 2) {
                         const hash = hashSha256(diffAsStr);
-                        const message = this.createTransactionDataSigningMessage(t.id, hash);
+                        const message = this.createTransactionDataSigningMessageV2(t.id, hash);
+                        const signerAddress = t.signer!.address;
+                        if (!await this.security.verify(message, t.signature, signerAddress))
+                            // TODO: turn this into proper reasoning
+                            throw ERROR_WRONG_SIGNATURE;
+                    }
+                    else if (t.version == 3) {
+                        const hash = hashSha256(diffAsStr);
+                        const message = this.createTransactionDataSigningMessageV3(t.id, hash);
                         const signerAddress = t.signer!.address;
                         if (!await this.security.verify(message, t.signature, signerAddress))
                             // TODO: turn this into proper reasoning
@@ -408,7 +422,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
         // build a transaction record equipped with a new UUID, date and the serialized manipulations
         const transaction = {} as Transaction
 
-        transaction.version = 2;
+        transaction.version = 3;
         transaction.id = util.newUuid();
         transaction.date = new Date().getTime();
         transaction.deps = [];
@@ -425,7 +439,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
                 throw new Error("signer argument is required when working with security");
 
             const hash = hashSha256(diff);
-            const message = this.createTransactionDataSigningMessage(transaction.id, hash);
+            const message = this.createTransactionDataSigningMessageV3(transaction.id, hash);
             const signature = await this.security.sign(message, signer.address);
             
             transaction.signature = signature;
