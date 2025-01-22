@@ -1,4 +1,4 @@
-import { session, reflection, util } from "@dev.hiconic/tf.js_hc-js-api";
+import { session, reflection, util, manipulation } from "@dev.hiconic/tf.js_hc-js-api";
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
 import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer, ManipulationFrame } from "./manipulation-buffer.js";
@@ -16,10 +16,15 @@ export const ERROR_WRONG_SIGNATURE = {
     message: "Signature was wrong"
 } as const;
 
+export const ERROR_SIGNING_WITHDRAWN = {
+    message: "Signing was withdrawn"
+} as const;
+
 export type ManagedEntitiesConfig = {
     auth?: ManagedEntitiesAuth, 
     encryption?: ManagedEntitiesEncryption,
-    dataInitializers?: DataInitializer[]
+    dataInitializers?: DataInitializer[],
+    manageDraft?: boolean
 }
 
 /** 
@@ -187,7 +192,7 @@ export interface ManagedEntities {
     /**
      * Persists the recorded and collected {@link mM.Manipulation manipulations} by appending them as a transaction to the event-source persistence.
      */
-    commit(signer?: Signer): Promise<void>;
+    commit(signer?: Signer, withdrawn?: () => boolean): Promise<void>;
 
     /**
      * Builds a select query from a GMQL select query statement which can then be equipped with variable values and executed.
@@ -200,6 +205,8 @@ export interface ManagedEntities {
      * @param statement a GMQL entity query statement which may contain variables
      */
     entityQuery(statement: string): Promise<session.EntityQueryResultConvenience>;
+
+    deferDraftPersistence(): void;
 
     /**
      * The in-memory OODB that keeps all the managed {@link rM.GenericEntity entities}, records changes on them as {@link mM.Manipulation manipulations} 
@@ -234,12 +241,23 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
     initializers?: DataInitializer[];
 
+    draft?: Draft;
+
     constructor(databaseName: string, config?: ManagedEntitiesConfig) {
         this.databaseName = databaseName
         this.manipulationBuffer = new SessionManipulationBuffer(this.session);
         this.security = config?.auth;
         this.encryption = config?.encryption;
         this.initializers = config?.dataInitializers;
+        
+        if(config?.manageDraft)
+            this.draft = new Draft(() => this.getDatabase(), this.manipulationBuffer, this.session, this.encryption);
+    }
+
+    deferDraftPersistence(): void {
+        if (this.draft) {
+
+        }
     }
 
     create<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): E {
@@ -411,9 +429,13 @@ class ManagedEntitiesImpl implements ManagedEntities {
         // remember the id of the last transaction for linkage with an new transaction
         if (transactions.length > 0)
             this.lastTransactionId = transactions[transactions.length - 1].id
+
+        if (this.draft) {
+            await this.draft.load();
+        }
     }
 
-    async commit(signer?: Signer): Promise<void> {
+    async commit(signer?: Signer, withdrawn?: () => boolean): Promise<void> {
         const manis = this.manipulationBuffer.getCommitManipulations();
         // serialize the manipulations (currently as XML)
         const marshaller = new ManipulationMarshaller();
@@ -440,7 +462,22 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
             const hash = hashSha256(diff);
             const message = this.createTransactionDataSigningMessageV3(transaction.id, hash);
-            const signature = await this.security.sign(message, signer.address);
+
+            let signature: string;
+
+            try {
+                signature = await this.security.sign(message, signer.address);
+            }
+            catch (error) {
+                if (withdrawn && withdrawn())
+                    throw ERROR_SIGNING_WITHDRAWN;
+                
+                throw error;
+            }
+
+            if (withdrawn && withdrawn()) {
+                throw ERROR_SIGNING_WITHDRAWN;
+            }
             
             transaction.signature = signature;
             transaction.hash = hash;
@@ -460,6 +497,9 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
         // store the id of the appended transaction as latest transaction id
         this.lastTransactionId = transaction.id
+
+        if (this.draft)
+            this.draft.clear();
     }
 
     private enrich(transaction: Transaction, serManis: string): string {
@@ -495,7 +535,6 @@ class ManagedEntitiesImpl implements ManagedEntities {
         return this.databasePromise;
     }
 
-
     private orderByDependency(transactions: Transaction[]): Transaction[] {
         const index = new Map<string, Transaction>();
 
@@ -529,6 +568,130 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
 }
 
+type DraftQueueEntry = [mM.AtomicManipulation, boolean];
+type DraftRecord = { seq: number, data: string };
+
+class Draft implements manipulation.ManipulationListener {
+    private databaseProvider: () => Promise<Database>;
+    private manipulationBuffer: ManipulationBuffer;
+    private encryption?: ManagedEntitiesEncryption;
+    private numSequence = 0;
+    private queue: DraftQueueEntry[] = [];
+    private readonly messageChannel = new MessageChannel();
+    private marshaller = new ManipulationMarshaller();
+    private loading = false;
+    private session: session.ManagedGmSession;
+    private deferred = false;
+    private scheduled = false;
+    
+    constructor(databaseProvider: () => Promise<Database>, manipulationBuffer: ManipulationBuffer, session: session.ManagedGmSession, encryption?: ManagedEntitiesEncryption) {
+        this.databaseProvider = databaseProvider;
+        this.manipulationBuffer = manipulationBuffer;
+        this.encryption = encryption;
+        this.session = session;
+
+        this.messageChannel.port1.onmessage = () => this.processQueue();
+        session.listeners().add(this);
+    }
+
+    defer(defer: boolean): void {
+        this.deferred = defer;
+        this.scheduleIfRequired();
+    }
+
+    async load(): Promise<void> {
+        this.loading = true;
+        try {
+            const db = await this.databaseProvider();
+            const draft = await db.fetchDraft();
+            
+            // execute them orderly
+            draft.sort((e1, e2) => e2.seq - e1.seq);
+
+            for (const entry of draft) {
+                let data = entry.data;
+                
+                if (this.encryption) {
+                    data = await this.encryption.decrypt(data);
+                }
+
+                const manipulations = await this.marshaller.unmarshalFromString(data);
+
+                for (const manipulation of manipulations)
+                    this.session.manipulate().mode(session.ManipulationMode.REMOTE_GLOBAL).apply(manipulation);
+            }
+        }
+        finally {
+            this.loading = false;
+        }
+    }
+
+    async clear(): Promise<void> {
+        const db = await this.databaseProvider();
+        db.clearDraft();
+    }
+
+    // TODO: think about listening to the buffer using commit manipulation instead of the session
+    onMan(manipulation: mM.Manipulation): void {
+        if (this.loading)
+            return;
+
+        if (!mM.AtomicManipulation.isInstance(manipulation))
+            return;
+
+        const atomicManipulation = manipulation as mM.AtomicManipulation;
+
+        if (!this.manipulationBuffer.isReplicating() || this.manipulationBuffer.isRedoing()) {
+            // append manipulation
+            this.enqueue(atomicManipulation);
+        }
+        else if (this.manipulationBuffer.isUndoing()) {
+            // remove manipulation
+            this.enqueue(atomicManipulation, false);
+        }
+    }
+
+    private enqueue(manipulation: mM.AtomicManipulation, add = true) {
+        this.queue.push([manipulation, add]);
+        this.scheduleIfRequired();
+    }
+
+    private scheduleIfRequired() {
+        if (this.deferred || this.queue.length == 0 || this.scheduled)
+            return;
+
+        this.messageChannel.port2.postMessage(null);
+    }
+
+    private async processQueue(): Promise<void> {
+        try {
+            const db = await this.databaseProvider();
+            while (true) {
+                const entry = this.queue.shift();
+                if (!entry)
+                    return;
+
+                if (entry[1]) {
+                    // add
+                    let data = await this.marshaller.marshalToString([entry[0]]);
+
+                    if (this.encryption)
+                        data = await this.encryption.encrypt(data);
+
+                    db.appendToDraft({seq: this.numSequence++, data: data})
+                }
+                else {
+                    // remove
+                    db.removeFromDraft(--this.numSequence);
+                }
+            }
+        }
+        finally {
+            this.scheduled = false;
+        }
+    }
+}
+
 /**
  * An append-only persistence for {@link Transaction transactions} based on {@link indexedDB}.
  * 
@@ -536,6 +699,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
  */
 class Database {
     static readonly OBJECT_STORE_TRANSACTIONS = "transactions";
+    static readonly OBJECT_STORE_DRAFT = "draft";
 
     private db: IDBDatabase;
     readonly name: string;
@@ -591,9 +755,74 @@ class Database {
         });
     }
 
+    appendToDraft(record: DraftRecord): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const dbTransaction = this.db.transaction(Database.OBJECT_STORE_DRAFT, 'readwrite');
+            const objectStore = dbTransaction.objectStore(Database.OBJECT_STORE_DRAFT);
+
+            const request = objectStore.add(record)
+
+            request.onsuccess = () => {
+                resolve();
+            }
+
+            request.onerror = () => reject(request.error)
+        });
+    }
+
+    removeFromDraft(seq: number): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const dbTransaction = this.db.transaction(Database.OBJECT_STORE_DRAFT, 'readwrite');
+            const objectStore = dbTransaction.objectStore(Database.OBJECT_STORE_DRAFT);
+
+            const request = objectStore.delete(seq);
+
+            request.onsuccess = () => {
+                resolve();
+            }
+
+            request.onerror = () => reject(request.error)
+        });
+    }
+
+    fetchDraft(): Promise<DraftRecord[]> {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(Database.OBJECT_STORE_DRAFT, 'readonly');
+            const objectStore = transaction.objectStore(Database.OBJECT_STORE_DRAFT);
+
+            const request = objectStore.getAll();
+
+            request.onsuccess = () => {
+                // automatically casting result to DraftRecord[] as we know this is the content of the db
+                resolve(request.result)
+            }
+
+            request.onerror = () => reject(request.error)
+        });
+    }
+
+    clearDraft(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(Database.OBJECT_STORE_DRAFT, 'readwrite');
+            const objectStore = transaction.objectStore(Database.OBJECT_STORE_DRAFT);
+
+            const request = objectStore.clear();
+
+            request.onsuccess = () => {
+                resolve(undefined);
+            }
+
+            request.onerror = () => reject(request.error)
+        });
+    }
+
     private static init(db: IDBDatabase): void {
         if (!db.objectStoreNames.contains(Database.OBJECT_STORE_TRANSACTIONS)) {
             db.createObjectStore(Database.OBJECT_STORE_TRANSACTIONS, { keyPath: 'id' });
+        }
+
+        if (!db.objectStoreNames.contains(Database.OBJECT_STORE_DRAFT)) {
+            db.createObjectStore(Database.OBJECT_STORE_DRAFT, { keyPath: 'seq' });
         }
     }
 }
