@@ -116,7 +116,7 @@ export interface TransactionMeta {
 export interface Transaction extends TransactionMeta {
     signer?: Signer;
     hash: string;
-    signature: string;
+    signature?: string;
     payload: string | Blob;
 }
 
@@ -634,7 +634,7 @@ class DraftImpl implements Draft {
         this.session = session;
 
         this.messageChannel.port1.onmessage = () => this.processQueue();
-        manipulationBuffer.addBufferUpdateListener(this.onBufferUpdate.bind(this))
+        manipulationBuffer.addBufferUpdateListener(this.onBufferUpdate.bind(this));
     }
 
     deferPersistence(defer: boolean): void {
@@ -705,7 +705,10 @@ class DraftImpl implements Draft {
         this.scheduled = true;
     }
 
-    waitForEmptyQueue(): Promise<void> {
+    async waitForEmptyQueue(): Promise<void> {
+        if (this.queue.length === 0)
+            return;
+
         if (!this.waitPromise)
             this.waitPromise = new AccessiblePromise<void>();
 
