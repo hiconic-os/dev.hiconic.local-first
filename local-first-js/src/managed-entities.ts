@@ -411,7 +411,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
                 if (this.security) {
                     if (t.version == 1) {
                         const signerAddress = t.signer!.address;
-                        if (!await this.security.verify(diffAsStr, t.signature, signerAddress))
+                        if (!await this.security.verify(diffAsStr, t.signature!, signerAddress))
                             // TODO: turn this into proper reasoning
                             throw ERROR_WRONG_SIGNATURE;
                     }
@@ -419,7 +419,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
                         const hash = hashSha256(diffAsStr);
                         const message = this.createTransactionDataSigningMessageV2(t.id, hash);
                         const signerAddress = t.signer!.address;
-                        if (!await this.security.verify(message, t.signature, signerAddress))
+                        if (!await this.security.verify(message, t.signature!, signerAddress))
                             // TODO: turn this into proper reasoning
                             throw ERROR_WRONG_SIGNATURE;
                     }
@@ -427,7 +427,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
                         const hash = hashSha256(diffAsStr);
                         const message = this.createTransactionDataSigningMessageV3(t.id, hash);
                         const signerAddress = t.signer!.address;
-                        if (!await this.security.verify(message, t.signature, signerAddress))
+                        if (!await this.security.verify(message, t.signature!, signerAddress))
                             // TODO: turn this into proper reasoning
                             throw ERROR_WRONG_SIGNATURE;
                     }
