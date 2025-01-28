@@ -1,9 +1,10 @@
-import { session, reflection, util, manipulation } from "@dev.hiconic/tf.js_hc-js-api";
 import * as mM from "@dev.hiconic/gm_manipulation-model";
 import * as rM from "@dev.hiconic/gm_root-model";
-import { ManipulationBuffer, ManipulationBufferUpdateListener, SessionManipulationBuffer, ManipulationFrame } from "./manipulation-buffer.js";
-import { ManipulationMarshaller } from "./manipulation-marshaler.js";
+import { reflection, session, util } from "@dev.hiconic/tf.js_hc-js-api";
 import { hashSha256 } from "./crypto.js";
+import { ManipulationBuffer, ManipulationBufferEvent, ManipulationBufferUpdateListener, ManipulationFrame, SessionManipulationBuffer } from "./manipulation-buffer.js";
+import { ManipulationMarshaller } from "./manipulation-marshaler.js";
+import { AccessiblePromise } from "./async.js";
 
 
 export type { ManipulationBuffer, ManipulationBufferUpdateListener };
@@ -102,7 +103,7 @@ export interface Signer {
     address: string;
 }
 
-interface TransactionMeta {
+export interface TransactionMeta {
     version: number;
     deps: string[];
     id: string;
@@ -112,11 +113,11 @@ interface TransactionMeta {
 /**
  * Describes a transaction that is modelled in a way that it can be stored as JSON-like structure in the {@link indexedDB}
  */
-interface Transaction extends TransactionMeta {
+export interface Transaction extends TransactionMeta {
     signer?: Signer;
     hash: string;
     signature: string;
-    payload: string;
+    payload: string | Blob;
 }
 
 interface TransactionPayload extends TransactionMeta {
@@ -190,6 +191,11 @@ export interface ManagedEntities {
     load(): Promise<void>;
 
     /**
+     * Links the signed transactions into the transaction dependency tree and persists them.
+     */
+    insert(transactions: Transaction[]): Promise<void>;
+
+    /**
      * Persists the recorded and collected {@link mM.Manipulation manipulations} by appending them as a transaction to the event-source persistence.
      */
     commit(signer?: Signer, withdrawn?: () => boolean): Promise<void>;
@@ -206,7 +212,7 @@ export interface ManagedEntities {
      */
     entityQuery(statement: string): Promise<session.EntityQueryResultConvenience>;
 
-    deferDraftPersistence(): void;
+    getDraft(): Draft | undefined;
 
     /**
      * The in-memory OODB that keeps all the managed {@link rM.GenericEntity entities}, records changes on them as {@link mM.Manipulation manipulations} 
@@ -241,7 +247,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
     initializers?: DataInitializer[];
 
-    draft?: Draft;
+    draft?: DraftImpl;
 
     constructor(databaseName: string, config?: ManagedEntitiesConfig) {
         this.databaseName = databaseName
@@ -251,13 +257,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
         this.initializers = config?.dataInitializers;
         
         if(config?.manageDraft)
-            this.draft = new Draft(() => this.getDatabase(), this.manipulationBuffer, this.session, this.encryption);
-    }
-
-    deferDraftPersistence(): void {
-        if (this.draft) {
-
-        }
+            this.draft = new DraftImpl(() => this.getDatabase(), this.manipulationBuffer, this.session, this.encryption);
     }
 
     create<E extends rM.GenericEntity>(type: reflection.EntityType<E>, properties?: PartialProperties<E>): E {
@@ -357,6 +357,21 @@ class ManagedEntitiesImpl implements ManagedEntities {
                 `Sign this message to confirm integrity of changes to be saved.\n` +
                 `ID: ${id}, HASH: ${sha256Hash}.`;    
     }
+
+    private async getBlobText(blob: Blob): Promise<string> {
+        // Prüfen, ob `Blob.text()` verfügbar ist
+        if (typeof blob.text === "function") {
+            return blob.text();
+        }
+    
+        // Falls nicht verfügbar: Fallback auf ArrayBuffer
+        if (typeof blob.arrayBuffer === "function") {
+            const arrayBuffer = await blob.arrayBuffer();
+            return new TextDecoder().decode(arrayBuffer);
+        }
+    
+        throw new Error("Blob.text() und Blob.arrayBuffer() sind nicht verfügbar.");
+    }
     
     async load(): Promise<void> {
         // get database and fetch all transaction records from it
@@ -371,7 +386,17 @@ class ManagedEntitiesImpl implements ManagedEntities {
         try {
             for (const t of transactions) {
                 const marshaller = new ManipulationMarshaller();
-                let diffAsStr = t.payload as string;
+                const payloadData = t.payload;
+
+                let diffAsStr: string;
+
+                if (typeof payloadData === "string") {
+                    diffAsStr = payloadData as string;
+                }
+                else {
+                    const blob = payloadData as Blob;
+                    diffAsStr = await this.getBlobText(blob);
+                }
 
                 if (this.encryption) {
                     const decrypted = await this.encryption.decrypt(diffAsStr);;
@@ -435,6 +460,10 @@ class ManagedEntitiesImpl implements ManagedEntities {
         }
     }
 
+    async insert(transactions: Transaction[]): Promise<void> {
+
+    }
+
     async commit(signer?: Signer, withdrawn?: () => boolean): Promise<void> {
         const manis = this.manipulationBuffer.getCommitManipulations();
         // serialize the manipulations (currently as XML)
@@ -487,19 +516,24 @@ class ManagedEntitiesImpl implements ManagedEntities {
             diff = await this.encryption.encrypt(diff);
         }
 
-        transaction.payload = diff;
+        const db = await this.getDatabase();
+
+        if (db.supportsBlob()) 
+            transaction.payload = new Blob([diff], { type: "text/plain" });
+        else
+            transaction.payload = diff;
 
         // append the transaction record to the database
-        await (await this.getDatabase()).append(transaction)
+        await db.append(transaction);
 
         // clear the manipulations as they are persisted
         this.manipulationBuffer.clear();
 
         // store the id of the appended transaction as latest transaction id
-        this.lastTransactionId = transaction.id
+        this.lastTransactionId = transaction.id;
 
         if (this.draft)
-            this.draft.clear();
+            await this.draft.clear();
     }
 
     private enrich(transaction: Transaction, serManis: string): string {
@@ -566,14 +600,22 @@ class ManagedEntitiesImpl implements ManagedEntities {
         collect.push(transaction)
     }
 
+    getDraft(): Draft | undefined {
+        return this.draft;
+    }
 }
 
-type DraftQueueEntry = [mM.AtomicManipulation, boolean];
-type DraftRecord = { seq: number, data: string };
+type DraftQueueEntry = [mM.Manipulation, boolean];
+type DraftRecord = { version: number, seq: number, data: string, encrypted: boolean };
 
-class Draft implements manipulation.ManipulationListener {
+export interface Draft {
+    waitForEmptyQueue(): Promise<void>;
+    deferPersistence(defer: boolean): void;
+    enableEncryption(enabled: boolean): void;
+}
+
+class DraftImpl implements Draft {
     private databaseProvider: () => Promise<Database>;
-    private manipulationBuffer: ManipulationBuffer;
     private encryption?: ManagedEntitiesEncryption;
     private numSequence = 0;
     private queue: DraftQueueEntry[] = [];
@@ -583,20 +625,25 @@ class Draft implements manipulation.ManipulationListener {
     private session: session.ManagedGmSession;
     private deferred = false;
     private scheduled = false;
+    private waitPromise?: AccessiblePromise<void>;
+    private encryptionEnabled = true;
     
     constructor(databaseProvider: () => Promise<Database>, manipulationBuffer: ManipulationBuffer, session: session.ManagedGmSession, encryption?: ManagedEntitiesEncryption) {
         this.databaseProvider = databaseProvider;
-        this.manipulationBuffer = manipulationBuffer;
         this.encryption = encryption;
         this.session = session;
 
         this.messageChannel.port1.onmessage = () => this.processQueue();
-        session.listeners().add(this);
+        manipulationBuffer.addBufferUpdateListener(this.onBufferUpdate.bind(this))
     }
 
-    defer(defer: boolean): void {
+    deferPersistence(defer: boolean): void {
         this.deferred = defer;
         this.scheduleIfRequired();
+    }
+
+    enableEncryption(enabled: boolean): void {
+        this.encryptionEnabled = enabled;
     }
 
     async load(): Promise<void> {
@@ -606,12 +653,12 @@ class Draft implements manipulation.ManipulationListener {
             const draft = await db.fetchDraft();
             
             // execute them orderly
-            draft.sort((e1, e2) => e2.seq - e1.seq);
+            draft.sort((e1, e2) => e1.seq - e2.seq);
 
             for (const entry of draft) {
                 let data = entry.data;
                 
-                if (this.encryption) {
+                if (this.encryption && entry.encrypted) {
                     data = await this.encryption.decrypt(data);
                 }
 
@@ -627,31 +674,25 @@ class Draft implements manipulation.ManipulationListener {
     }
 
     async clear(): Promise<void> {
+        await this.waitForEmptyQueue();
         const db = await this.databaseProvider();
-        db.clearDraft();
+        await db.clearDraft();
     }
 
     // TODO: think about listening to the buffer using commit manipulation instead of the session
-    onMan(manipulation: mM.Manipulation): void {
+
+    private onBufferUpdate(_buffer: ManipulationBuffer, event: ManipulationBufferEvent): void {
         if (this.loading)
             return;
 
-        if (!mM.AtomicManipulation.isInstance(manipulation))
-            return;
+        if (event.removedManipulation)
+            this.enqueue(event.removedManipulation, false);
 
-        const atomicManipulation = manipulation as mM.AtomicManipulation;
-
-        if (!this.manipulationBuffer.isReplicating() || this.manipulationBuffer.isRedoing()) {
-            // append manipulation
-            this.enqueue(atomicManipulation);
-        }
-        else if (this.manipulationBuffer.isUndoing()) {
-            // remove manipulation
-            this.enqueue(atomicManipulation, false);
-        }
+        if (event.addedManipulation)
+            this.enqueue(event.addedManipulation);
     }
 
-    private enqueue(manipulation: mM.AtomicManipulation, add = true) {
+    private enqueue(manipulation: mM.Manipulation, add = true) {
         this.queue.push([manipulation, add]);
         this.scheduleIfRequired();
     }
@@ -661,6 +702,14 @@ class Draft implements manipulation.ManipulationListener {
             return;
 
         this.messageChannel.port2.postMessage(null);
+        this.scheduled = true;
+    }
+
+    waitForEmptyQueue(): Promise<void> {
+        if (!this.waitPromise)
+            this.waitPromise = new AccessiblePromise<void>();
+
+        return this.waitPromise.promise;
     }
 
     private async processQueue(): Promise<void> {
@@ -675,10 +724,14 @@ class Draft implements manipulation.ManipulationListener {
                     // add
                     let data = await this.marshaller.marshalToString([entry[0]]);
 
-                    if (this.encryption)
-                        data = await this.encryption.encrypt(data);
+                    let encrypted = false;
 
-                    db.appendToDraft({seq: this.numSequence++, data: data})
+                    if (this.encryption && this.encryptionEnabled) {
+                        data = await this.encryption.encrypt(data);
+                        encrypted = true;
+                    }
+
+                    db.appendToDraft({version: 1, seq: this.numSequence++, data: data, encrypted})
                 }
                 else {
                     // remove
@@ -687,9 +740,43 @@ class Draft implements manipulation.ManipulationListener {
             }
         }
         finally {
+            if (this.waitPromise) {
+                this.waitPromise.resolve();
+                this.waitPromise = undefined;
+            }
+
             this.scheduled = false;
         }
     }
+}
+
+export type DatabaseInfo = {
+    readonly name: string,
+    readonly dbName: string,
+    readonly version?: number;
+}
+
+export async function listDatabases(predicate: (dbName: string) => boolean): Promise<DatabaseInfo[]> {
+    const databases = await indexedDB.databases();
+
+    const infos: DatabaseInfo[] = [];
+
+    for (const database of databases) {
+        const dbName = database.name!;
+        if (!predicate(dbName))
+            continue;
+
+        const db = await Database.open(dbName);
+        const name = await db.getName();
+        infos.push({name, dbName, version: database.version})
+    }
+
+    return infos;
+}
+
+type DatabaseMeta = {
+    name: string,
+    id: "meta"
 }
 
 /**
@@ -700,6 +787,7 @@ class Draft implements manipulation.ManipulationListener {
 class Database {
     static readonly OBJECT_STORE_TRANSACTIONS = "transactions";
     static readonly OBJECT_STORE_DRAFT = "draft";
+    static readonly OBJECT_STORE_META = "meta";
 
     private db: IDBDatabase;
     readonly name: string;
@@ -709,9 +797,78 @@ class Database {
         this.db = db;
     }
 
+    supportsBlob(): boolean {
+        return this.db instanceof IDBFactory;
+    }
+
+    private update(storeName: string, operation: (store: IDBObjectStore) => IDBRequest<any>): Promise<void> {
+        return this.runTransaction(storeName, "readwrite", operation);
+    }
+
+    private read<T>(storeName: string, operation: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+        return this.runTransaction(storeName, "readonly", operation);
+    }
+
+    private addOrUpdate(storeName: string, record: any): Promise<void> {
+        return this.update(storeName, store => store.add(record));
+    }
+
+    private get<T>(storeName: string, key: any): Promise<T> {
+        return this.read(storeName, (store) => store.get(key));
+    }
+
+    private remove(storeName: string, key: any): Promise<void> {
+        return this.update(storeName, (store) => store.delete(key));
+    }
+
+    private removeAll(storeName: string): Promise<void> {
+        return this.update(storeName, (store) => store.clear());
+    }
+
+    private getAll<T>(storeName: string): Promise<T[]> {
+        return this.read<T[]>(storeName, store => store.getAll());
+    }
+
+    /**
+     * Helper to perform an operation in an IndexedDB transaction.
+     * @param db - The IDBDatabase instance.
+     * @param storeName - The name of the object store.
+     * @param mode - The transaction mode ("readonly" or "readwrite").
+     * @param operation - A callback that performs the operation within the transaction.
+     * @returns A promise that resolves after the transaction completes.
+     */
+    private async runTransaction<T>(storeName: string, mode: IDBTransactionMode, operation: (store: IDBObjectStore) => IDBRequest<T>, eagerConsumer?: (result: T) => void): Promise<T> {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(storeName, mode);
+            const store = transaction.objectStore(storeName);
+
+            let operationSuccessful = false; // Track if the operation succeeded
+
+            const request = operation(store);
+
+            request.onsuccess = () => {
+                operationSuccessful = true;
+                if (eagerConsumer)
+                    eagerConsumer(request.result);
+            };
+
+            transaction.oncomplete = () => {
+                if (operationSuccessful) {
+                    resolve(request.result);
+                } else {
+                    reject(new Error("Transaction completed without a successful operation."));
+                }
+            };
+
+            transaction.onerror = () => {
+                reject(transaction.error);
+            };
+        });
+    }
+
     static async open(databaseName: string): Promise<Database> {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open(databaseName, 2);
+            const request = indexedDB.open(databaseName, 3);
 
             request.onupgradeneeded = () => Database.init(request.result);
 
@@ -724,99 +881,51 @@ class Database {
         });
     }
 
+    async getMeta(): Promise<DatabaseMeta> {
+        const meta = await this.get<DatabaseMeta>(Database.OBJECT_STORE_META, "meta");
+        return meta || { id: "meta", name: "default"};
+    }
+
+    async getName(): Promise<string> {
+        return (await this.getMeta()).name;
+    }
+
+    async setName(name: string): Promise<void> {
+        const meta = await this.getMeta();      
+        meta.name = name;  
+
+        return this.addOrUpdate(Database.OBJECT_STORE_META, meta);
+    }
+
     async fetch(): Promise<Transaction[]> {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(Database.OBJECT_STORE_TRANSACTIONS, 'readonly');
-            const objectStore = transaction.objectStore(Database.OBJECT_STORE_TRANSACTIONS);
-
-            const request = objectStore.getAll();
-
-            request.onsuccess = () => {
-                // automatically casting result to Transaction[] as we know this is the content of the db
-                resolve(request.result)
-            }
-
-            request.onerror = () => reject(request.error)
-        });
+        return this.getAll(Database.OBJECT_STORE_TRANSACTIONS);
     }
 
     append(transaction: Transaction): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const dbTransaction = this.db.transaction(Database.OBJECT_STORE_TRANSACTIONS, 'readwrite');
-            const objectStore = dbTransaction.objectStore(Database.OBJECT_STORE_TRANSACTIONS);
-
-            const request = objectStore.add(transaction)
-
-            request.onsuccess = () => {
-                resolve();
-            }
-
-            request.onerror = () => reject(request.error)
-        });
+        return this.addOrUpdate(Database.OBJECT_STORE_TRANSACTIONS, transaction);
     }
 
     appendToDraft(record: DraftRecord): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const dbTransaction = this.db.transaction(Database.OBJECT_STORE_DRAFT, 'readwrite');
-            const objectStore = dbTransaction.objectStore(Database.OBJECT_STORE_DRAFT);
-
-            const request = objectStore.add(record)
-
-            request.onsuccess = () => {
-                resolve();
-            }
-
-            request.onerror = () => reject(request.error)
-        });
+        return this.addOrUpdate(Database.OBJECT_STORE_DRAFT, record);
     }
 
     removeFromDraft(seq: number): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const dbTransaction = this.db.transaction(Database.OBJECT_STORE_DRAFT, 'readwrite');
-            const objectStore = dbTransaction.objectStore(Database.OBJECT_STORE_DRAFT);
-
-            const request = objectStore.delete(seq);
-
-            request.onsuccess = () => {
-                resolve();
-            }
-
-            request.onerror = () => reject(request.error)
-        });
+        return this.remove(Database.OBJECT_STORE_DRAFT, seq);
     }
 
     fetchDraft(): Promise<DraftRecord[]> {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(Database.OBJECT_STORE_DRAFT, 'readonly');
-            const objectStore = transaction.objectStore(Database.OBJECT_STORE_DRAFT);
-
-            const request = objectStore.getAll();
-
-            request.onsuccess = () => {
-                // automatically casting result to DraftRecord[] as we know this is the content of the db
-                resolve(request.result)
-            }
-
-            request.onerror = () => reject(request.error)
-        });
+        return this.getAll(Database.OBJECT_STORE_DRAFT);
     }
 
-    clearDraft(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(Database.OBJECT_STORE_DRAFT, 'readwrite');
-            const objectStore = transaction.objectStore(Database.OBJECT_STORE_DRAFT);
-
-            const request = objectStore.clear();
-
-            request.onsuccess = () => {
-                resolve(undefined);
-            }
-
-            request.onerror = () => reject(request.error)
-        });
+    async clearDraft(): Promise<void> {
+        await this.removeAll(Database.OBJECT_STORE_DRAFT);
     }
 
     private static init(db: IDBDatabase): void {
+        if (!db.objectStoreNames.contains(Database.OBJECT_STORE_META)) {
+            db.createObjectStore(Database.OBJECT_STORE_META, { keyPath: 'id' });
+        }
+
         if (!db.objectStoreNames.contains(Database.OBJECT_STORE_TRANSACTIONS)) {
             db.createObjectStore(Database.OBJECT_STORE_TRANSACTIONS, { keyPath: 'id' });
         }
@@ -824,5 +933,6 @@ class Database {
         if (!db.objectStoreNames.contains(Database.OBJECT_STORE_DRAFT)) {
             db.createObjectStore(Database.OBJECT_STORE_DRAFT, { keyPath: 'seq' });
         }
+
     }
 }

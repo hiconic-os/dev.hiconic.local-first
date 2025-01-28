@@ -1,9 +1,15 @@
 import { session } from "@dev.hiconic/tf.js_hc-js-api";
 import * as mM from "@dev.hiconic/gm_manipulation-model";
-import { GenericEntity } from "@dev.hiconic/gm_root-model"
-import { LocalEntityProperty } from "@dev.hiconic/gm_owner-model"
+import { GenericEntity } from "@dev.hiconic/gm_root-model";
+import { LocalEntityProperty } from "@dev.hiconic/gm_owner-model";
 
-export type ManipulationBufferUpdateListener = (buffer: ManipulationBuffer) => void;
+export type ManipulationBufferEvent = {
+    readonly removedManipulation?: mM.Manipulation,
+    readonly addedManipulation?: mM.Manipulation,
+    readonly cleared: boolean;
+}
+
+export type ManipulationBufferUpdateListener = (buffer: ManipulationBuffer, event: ManipulationBufferEvent ) => void;
 
 export interface ManipulationBuffer {
     /** True if there is at least one manipulation that can be undone */
@@ -151,7 +157,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
             this.redoing = false;
         }
 
-        this.notifyListeners();
+        this.notifyListeners({removedManipulation: m, cleared: false});
     }
 
     undo(): void {
@@ -171,7 +177,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
             this.undoing = false;
         }
 
-        this.notifyListeners();
+        this.notifyListeners({removedManipulation: m, cleared: false});
     }
 
     private traverseManipulation(manipulation: mM.Manipulation, visitor: (m: mM.AtomicManipulation) => void) {
@@ -202,7 +208,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
         this.manipulations.length = 0;
         this.index = 0;
         this.commitManipulationIndex.clear();
-        this.notifyListeners();
+        this.notifyListeners({cleared: true});
     }
 
     getCommitManipulations(): mM.Manipulation[] {
@@ -308,7 +314,7 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
     record(manipulation: mM.Manipulation): void {
         this.manipulations.length = this.index++;
         this.manipulations.push(manipulation);
-        this.notifyListeners();
+        this.notifyListeners({ addedManipulation: manipulation, cleared: false});
     }
 
     replace(manipulation: mM.Manipulation, substitude: mM.Manipulation): void {
@@ -318,15 +324,16 @@ export class SessionManipulationBuffer implements ManipulationBuffer, TrackingFr
             this.manipulations[index] = substitude;
         }
         // no notification here as the general status did not change
+        this.notifyListeners({ removedManipulation: manipulation, addedManipulation: manipulation, cleared: false});
     }
 
     getManipulations(): mM.Manipulation[] {
         return this.manipulations.slice(0, this.index);
     }
 
-    private notifyListeners(): void {
+    private notifyListeners(event: ManipulationBufferEvent): void {
         for (const l of this.listeners) {
-            l(this);
+            l(this, event);
         }
     }
 

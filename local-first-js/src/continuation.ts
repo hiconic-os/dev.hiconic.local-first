@@ -1,26 +1,8 @@
 import { lang } from "@dev.hiconic/tf.js_hc-js-api";
+import { AccessiblePromise } from "./async.js";
 
 export type DeferredFunction = (this: Continuation, ...args: any[]) => void;
 export type ContinuationConsumer<E, C> = (this: Continuation, el: E, context: C) => void;
-
-class AccessiblePromise<T> {
-    public promise: Promise<T>;
-    public resolve;
-    public reject;
-
-    constructor() {
-        let res: (value: T) => void;
-        let rej: (reason?: any) => void;
-        
-        this.promise = new Promise<T>((resolve, reject) => {
-            res = resolve;
-            rej = reject;
-        });
-
-        this.resolve = res!;
-        this.reject = rej!;
-    }
-}
 
 export abstract class Continuation {
     readonly asyncThreshold = 20;
