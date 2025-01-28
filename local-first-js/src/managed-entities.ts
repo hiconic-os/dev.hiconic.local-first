@@ -193,7 +193,7 @@ export interface ManagedEntities {
     /**
      * Links the signed transactions into the transaction dependency tree and persists them.
      */
-    insert(transactions: Transaction[]): Promise<void>;
+    merge(transactions: Transaction[]): Promise<void>;
 
     /**
      * Persists the recorded and collected {@link mM.Manipulation manipulations} by appending them as a transaction to the event-source persistence.
@@ -460,8 +460,8 @@ class ManagedEntitiesImpl implements ManagedEntities {
         }
     }
 
-    async insert(transactions: Transaction[]): Promise<void> {
-
+    async merge(_transactions: Transaction[]): Promise<void> {
+        // TODO
     }
 
     async commit(signer?: Signer, withdrawn?: () => boolean): Promise<void> {
