@@ -216,6 +216,10 @@ export interface ManagedEntities {
 
     getPersistedTransactionIds(): string[];
 
+    requiresSync(): Promise<boolean>;
+    
+    setRequiresSync(requiresSync: boolean): Promise<void>;
+
     /**
      * The in-memory OODB that keeps all the managed {@link rM.GenericEntity entities}, records changes on them as {@link mM.Manipulation manipulations} 
      * and makes the entities and their properties accessible by queries.
@@ -466,6 +470,8 @@ class ManagedEntitiesImpl implements ManagedEntities {
         const newTxs = incomingTxs.filter(tx => !existingTxIds.has(tx.id));
 
         // TODO: check validity with this.encryption
+        
+        this.transactionIds.push(...newTxs.map(tx => tx.id));
 
         await db.appendMany(newTxs);
     }
@@ -619,6 +625,16 @@ class ManagedEntitiesImpl implements ManagedEntities {
     getPersistedTransactionIds(): string[] {
         return this.transactionIds;
     }
+
+    async requiresSync(): Promise<boolean> {
+        const db = await this.getDatabase();
+        return db.requiresSynching();
+    }
+    
+    async setRequiresSync(requiresSync: boolean): Promise<void> {
+        const db = await this.getDatabase();
+        return db.setRequiresSynching(requiresSync);
+    }        
 }
 
 type DraftQueueEntry = [mM.Manipulation, boolean];
@@ -848,7 +864,7 @@ export class Database {
         await this.runTransactionForMany(storeName, "readwrite", operation);
     }
 
-    private readMany<T>(storeName: string, operation: (store: IDBObjectStore) => IDBRequest<T>[]): Promise<T[]> {
+    protected readMany<T>(storeName: string, operation: (store: IDBObjectStore) => IDBRequest<T>[]): Promise<T[]> {
         return this.runTransactionForMany(storeName, "readonly", operation);
     }
 
