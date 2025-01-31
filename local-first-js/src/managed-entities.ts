@@ -701,7 +701,7 @@ class DraftImpl implements Draft {
                 }
 
                 if (this.encryption && entry.encrypted) {
-                    data = await this.encryption.decrypt(text);
+                    text = await this.encryption.decrypt(text);
                 }
 
                 const manipulations = await this.marshaller.unmarshalFromString(text);
