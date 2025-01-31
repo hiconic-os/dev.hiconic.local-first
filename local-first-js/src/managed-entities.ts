@@ -788,7 +788,6 @@ class DraftImpl implements Draft {
 
 
 export type DatabaseInfo = {
-    readonly name: string,
     readonly dbName: string,
     readonly version?: number;
 }
@@ -803,16 +802,14 @@ export async function listDatabases(predicate: (dbName: string) => boolean): Pro
         if (!predicate(dbName))
             continue;
 
-        const db = await Database.open(dbName);
-        const name = await db.getName();
-        infos.push({name, dbName, version: database.version})
+        infos.push({dbName, version: database.version})
     }
 
     return infos;
 }
 
 type DatabaseMeta = {
-    name: string,
+    requiresSynching: boolean,
     id: "meta"
 }
 
@@ -957,19 +954,31 @@ export class Database {
     }
 
     async getMeta(): Promise<DatabaseMeta> {
-        const meta = await this.get<DatabaseMeta>(Database.OBJECT_STORE_META, "meta");
-        return meta || { id: "meta", name: "default"};
+        let meta = await this.get<DatabaseMeta>(Database.OBJECT_STORE_META, "meta");
+
+        if (!meta)
+            meta = { id: "meta", requiresSynching: false};
+
+        return meta;
     }
 
-    async getName(): Promise<string> {
-        return (await this.getMeta()).name;
+    async updateMeta(meta: DatabaseMeta): Promise<void> {
+        await this.addOrUpdate(Database.OBJECT_STORE_META, meta);
     }
 
-    async setName(name: string): Promise<void> {
-        const meta = await this.getMeta();      
-        meta.name = name;  
+    async setRequiresSynching(requiresSynching: boolean): Promise<void> {
+        let meta = await this.getMeta();
 
-        return this.addOrUpdate(Database.OBJECT_STORE_META, meta);
+        if (meta.requiresSynching !== requiresSynching) {
+            meta.requiresSynching = requiresSynching;
+            await this.updateMeta(meta);
+        }
+    }
+
+    async requiresSynching(): Promise<boolean> {
+        let meta = await this.getMeta();
+
+        return meta.requiresSynching;
     }
 
     async fetch(): Promise<Transaction[]> {
