@@ -170,11 +170,15 @@ export interface ManagedEntities {
     delete(entity: rM.GenericEntity): void;
 
     /**
-     * Retrieves the {@link rM.GenericEntity entity} with the given globalId.
-     * @param type the type 
-     * @param globalId the globalId of the entity
+     * Retrieves the {@link rM.GenericEntity entity} with the given globalId
+     * @throws exception in case the entity does not exist
      */
     get<E extends rM.GenericEntity>(type: reflection.EntityType<E>, globalId: string): E;
+    
+    /**
+     * Retrieves the {@link rM.GenericEntity entity} with the given globalId or null if not present
+     */
+    find<E extends rM.GenericEntity>(type: reflection.EntityType<E>, globalId: string): E;
 
     list<E extends rM.GenericEntity>(type: reflection.EntityType<E>): E[];
 
@@ -311,8 +315,16 @@ class ManagedEntitiesImpl implements ManagedEntities {
         this.session.deleteEntity(entity)
     }
 
-    get<E extends rM.GenericEntity>(_type: reflection.EntityType<E>, globalId: string): E {
+    find<E extends rM.GenericEntity>(_type: reflection.EntityType<E>, globalId: string): E {
         return this.session.getEntitiesView().findEntityByGlobalId(globalId);
+    }
+
+    get<E extends rM.GenericEntity>(type: reflection.EntityType<E>, globalId: string): E {
+        const entity = this.find(type, globalId);
+        if (entity != null)
+            return entity;
+
+        throw new Error("Entity of type " + type.getTypeSignature() + " with globalId " + globalId + " not found.");
     }
 
     list<E extends rM.GenericEntity>(type: reflection.EntityType<E>): E[] {
