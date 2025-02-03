@@ -12,7 +12,6 @@ export interface TransactionOrdering {
     leafs: Transaction[]
 }
 
-// TODO: also we need a second information as result which is the leaf transactionIds
 /**
  * Sorts transactions in the dependecy first, successor later order. Diamond situations are resolved by sorting by date.
  */
@@ -21,8 +20,8 @@ export function sortTransactions(transactions: Transaction[]): TransactionOrderi
     // Terminology:
     //  if A is depenedency of B, then B is a successor of A
 
-    if (transactions.length === 0)
-        return { transactions: [], leafs: [] };
+    if (transactions.length <= 1)
+        return { transactions, leafs: transactions };
 
     const txIdToNode = new Map<string, TxNode>();
 

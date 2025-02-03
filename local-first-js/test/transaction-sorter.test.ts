@@ -8,6 +8,16 @@ describe("transaction sorter", () => {
     checkShufflingAndSorting([]);
   });
 
+
+  //
+  // a
+  //
+  it("sorts single elment array", () => {
+    checkShufflingAndSorting([
+      newTx("a", 1, [])
+    ]);
+  });
+
   //
   // a-b-c-d-e-f
   //
