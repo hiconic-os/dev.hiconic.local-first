@@ -8,12 +8,19 @@ export function generateSymmetricKey(): string {
   return key.toString(CryptoJS.enc.Hex);
 }
 
-export function generateSymmetricKeyFromPassphrase(utfSalt: string, passphrase: string): string {
-  // Define a static salt
-  const salt = CryptoJS.enc.Utf8.parse(utfSalt); // UTF-8 encoded salt
+// Generate a cryptographic salt
+function generateSalt(bytes = 16): CryptoJS.lib.WordArray {
+  return CryptoJS.lib.WordArray.random(bytes);
+}
+
+export function generateSymmetricKeyFromPassphrase(saltOrHexSalt: string | CryptoJS.lib.WordArray, passphrase: string): CryptoJS.lib.WordArray {
   // Define the number of iterations and key size (256 bits = 32 bytes)
   const iterations = 1000;
   const keySize = 256 / 32; // Key size in words
+
+  const salt = typeof saltOrHexSalt === "string"?
+    CryptoJS.enc.Hex.parse(saltOrHexSalt):
+    saltOrHexSalt as CryptoJS.lib.WordArray;
 
   // Use PBKDF2 to derive the key from the passphrase
   const key = CryptoJS.PBKDF2(passphrase, salt, {
@@ -21,50 +28,57 @@ export function generateSymmetricKeyFromPassphrase(utfSalt: string, passphrase: 
     iterations,
   });
 
-  return key.toString(CryptoJS.enc.Hex);
+  return key;
 }
 
-export function deriveSymmetricKey(passphrase: string): string {
-  const salt = "unique-app-salt";
-  const key = CryptoJS.PBKDF2(passphrase, salt, {
-    keySize: 256 / 32, // 256-bit key
-    iterations: 10000, // high iterations for better security
-  });
-  return key.toString(CryptoJS.enc.Hex);
+export function deriveSymmetricKey(passphrase: string): [key: CryptoJS.lib.WordArray, salt: CryptoJS.lib.WordArray] {
+  const salt = generateSalt();
+  return [generateSymmetricKeyFromPassphrase(salt, passphrase), salt];
 }
 
-export function encryptString(data: string, key: string): string {
-  const keyHex = CryptoJS.enc.Hex.parse(key);
+export function encryptString(data: string, passphrase: string): string {
+  const [key, salt] = deriveSymmetricKey(passphrase);
   const iv = CryptoJS.lib.WordArray.random(16); // 128-Bit-IV
 
   // encrypt with AES
-  const encrypted = CryptoJS.AES.encrypt(data, keyHex, { iv });
+  const encrypted = CryptoJS.AES.encrypt(data, key, { iv });
   const result = {
-    ciphertext: encrypted.ciphertext.toString(CryptoJS.enc.Base64), // Chiffriertext
-    iv: iv.toString(CryptoJS.enc.Hex), // IV
+    iv: iv.toString(CryptoJS.enc.Hex),
+    salt: salt.toString(CryptoJS.enc.Hex),
+    ciphertext: encrypted.ciphertext.toString(CryptoJS.enc.Base64),
   };
 
   return JSON.stringify(result);
 }
 
-export function decryptString(encryptedData: string, key: string): string {
-  const keyHex = CryptoJS.enc.Hex.parse(key);
-
+export function decryptString(encryptedData: string, passphrase: string, fallbackSalt?: string): string {
   // parse encrypted data
-  const { ciphertext, iv } = JSON.parse(encryptedData);
+  try { 
+    const { ciphertext, iv, salt } = JSON.parse(encryptedData);
 
-  // parse ciphered text and IV from Base64 and hex
-  const binaryCiphertext = CryptoJS.enc.Base64.parse(ciphertext);
-  const ivHex = CryptoJS.enc.Hex.parse(iv);
+    // fallbackSalt is used as backwardscompatibility for json records that were historically not equipped with a salt
+    const sanitizedSalt = salt || fallbackSalt;
 
-  // decrypt with AES
-  const decrypted = CryptoJS.AES.decrypt(
-    { ciphertext: binaryCiphertext } as any,
-    keyHex,
-    { iv: ivHex }
-  );
+    const key = generateSymmetricKeyFromPassphrase(sanitizedSalt, passphrase);
+    //const key = CryptoJS.enc.Hex.parse(keyHex); // Convert to WordArray
 
-  return decrypted.toString(CryptoJS.enc.Utf8); // Entschlüsselte Zeichenkette zurückgeben
+    // parse ciphered text and IV from Base64 and hex
+    const binaryCiphertext = CryptoJS.enc.Base64.parse(ciphertext);
+    const ivBinary = CryptoJS.enc.Hex.parse(iv);
+
+  
+    // decrypt with AES
+    const decrypted = CryptoJS.AES.decrypt(
+      { ciphertext: binaryCiphertext } as any,
+      key,
+      { iv: ivBinary }
+    );
+  
+    return decrypted.toString(CryptoJS.enc.Utf8); // Entschlüsselte Zeichenkette zurückgeben
+    }
+  catch (error) {
+    return "";
+  }
 }
 
 // generates SHA256 a hash for a string content
@@ -94,44 +108,27 @@ export class MockManagedEntityAuth implements ManagedEntitiesAuth {
 }
 
 export class ManagedEntityEncryption implements ManagedEntitiesEncryption {
-  private key?: string;
-  private prevPassphrase?: string;
   private readonly passphraseProvider: () => string;
-  private readonly salt: string;
+  private readonly fallbackSalt;
 
-  constructor(salt: string, passphraseProvider: () => string) {
+  constructor(fallbackSalt: string, passphraseProvider: () => string) {
+    this.fallbackSalt = fallbackSalt;
     this.passphraseProvider = passphraseProvider;
-    this.salt = salt;
-  }
-
-  private getKey(): string {
-    const passphrase = this.passphraseProvider();
-
-    if (!this.key || this.prevPassphrase !== passphrase) {
-      this.key = this.getKeyForPassphrase(passphrase);
-      this.prevPassphrase = passphrase;
-    }
-
-    return this.key;
-  }
-
-  private getKeyForPassphrase(passphrase: string): string {
-      return generateSymmetricKeyFromPassphrase(this.salt, passphrase);
   }
 
   async decrypt(data: string): Promise<string> {
-    return decryptString(data, this.getKey());
+    return decryptString(data, this.passphraseProvider(), this.fallbackSalt);
   }
 
   async encrypt(data: string): Promise<string> {
-    return encryptString(data, this.getKey());
+    return encryptString(data, this.passphraseProvider());
   }
 
   decryptWithPassphrase(data: string, passphrase: string): string {
-    return decryptString(data, this.getKeyForPassphrase(passphrase));
+    return decryptString(data, passphrase, this.fallbackSalt);
   }
 
   encryptWithPassphrase(data: string, passphrase: string): string {
-    return encryptString(data, this.getKeyForPassphrase(passphrase));
+    return encryptString(data, passphrase);
   }
 }

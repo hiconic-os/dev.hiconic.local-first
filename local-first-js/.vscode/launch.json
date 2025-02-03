@@ -6,7 +6,7 @@
         "request": "launch",
         "name": "Debug Vitest Tests",
         "program": "${workspaceFolder}/node_modules/vitest/vitest.mjs",
-        "args": ["--inspect-brk", "--run", "--no-file-parallelism", "draft.test.ts"],
+        "args": ["--inspect-brk", "--run", "--no-file-parallelism", "crypto"],
         "autoAttachChildProcesses": true,
         "skipFiles": ["<node_internals>/**"],
         "console": "integratedTerminal"
