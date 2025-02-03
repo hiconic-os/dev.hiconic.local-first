@@ -31,33 +31,33 @@ export function generateSymmetricKeyFromPassphrase(saltOrHexSalt: string | Crypt
   return key;
 }
 
-export function deriveSymmetricKey(passphrase: string): [key: CryptoJS.lib.WordArray, salt: CryptoJS.lib.WordArray] {
-  const salt = generateSalt();
+export function deriveSymmetricKey(passphrase: string, saltText?: string): [key: CryptoJS.lib.WordArray, salt: CryptoJS.lib.WordArray] {
+  const salt = saltText? CryptoJS.enc.Utf8.parse(saltText): generateSalt();
   return [generateSymmetricKeyFromPassphrase(salt, passphrase), salt];
 }
 
-export function encryptString(data: string, passphrase: string): string {
-  const [key, salt] = deriveSymmetricKey(passphrase);
+export function encryptString(data: string, passphrase: string, saltText?: string, noSaltPropagation?: boolean): string {
+  const [key, salt] = deriveSymmetricKey(passphrase, saltText);
   const iv = CryptoJS.lib.WordArray.random(16); // 128-Bit-IV
 
   // encrypt with AES
   const encrypted = CryptoJS.AES.encrypt(data, key, { iv });
   const result = {
     iv: iv.toString(CryptoJS.enc.Hex),
-    salt: salt.toString(CryptoJS.enc.Hex),
+    salt: noSaltPropagation? undefined: salt.toString(CryptoJS.enc.Hex),
     ciphertext: encrypted.ciphertext.toString(CryptoJS.enc.Base64),
   };
 
   return JSON.stringify(result);
 }
 
-export function decryptString(encryptedData: string, passphrase: string, fallbackSalt?: string): string {
+export function decryptString(encryptedData: string, passphrase: string, fallbackSaltText?: string): string {
   // parse encrypted data
   try { 
     const { ciphertext, iv, salt } = JSON.parse(encryptedData);
 
     // fallbackSalt is used as backwardscompatibility for json records that were historically not equipped with a salt
-    const sanitizedSalt = salt || fallbackSalt;
+    const sanitizedSalt = salt || CryptoJS.enc.Utf8.parse(fallbackSaltText || "");
 
     const key = generateSymmetricKeyFromPassphrase(sanitizedSalt, passphrase);
     //const key = CryptoJS.enc.Hex.parse(keyHex); // Convert to WordArray
