@@ -708,6 +708,8 @@ class DraftImpl implements Draft {
 
                 for (const manipulation of manipulations)
                     this.session.manipulate().mode(session.ManipulationMode.REMOTE_GLOBAL).apply(manipulation);
+
+                this.numSequence = entry.seq + 1;
             }
         }
         finally {
