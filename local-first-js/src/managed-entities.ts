@@ -5,6 +5,7 @@ import { AccessiblePromise } from "./async.js";
 import { hashSha256 } from "./crypto.js";
 import { ManipulationBuffer, ManipulationBufferEvent, ManipulationBufferUpdateListener, ManipulationFrame, SessionManipulationBuffer } from "./manipulation-buffer.js";
 import { ManipulationMarshaller } from "./manipulation-marshaler.js";
+import { sortTransactions } from "./transaction-sorter.js";
 
 
 export type { ManipulationBuffer, ManipulationBufferUpdateListener };
@@ -260,7 +261,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
     databasePromise?: Promise<Database>
 
     /** The id of the last transaction (e.g. from load or commit) for later linkage to a next transaction */
-    lastTransactionId?: string
+    lastTransactionIds: string[] = [];
 
     /** The name of the ObjectStore used to fetch and append transaction */
     databaseName: string
@@ -471,11 +472,15 @@ class ManagedEntitiesImpl implements ManagedEntities {
         this.manipulationBuffer.suspendTracking();
 
         // get database and fetch all transaction records from it
-        let transactions = await (await this.getDatabase()).fetch()
+        const unsortedTransactions = await (await this.getDatabase()).fetch()
 
-        // TODO: you will receive also leaf tx ids here which need to be stored instead of lastTransactionId
-        transactions = this.orderTransactions(transactions); 
+        const txOrdering = sortTransactions(unsortedTransactions); 
         
+        const transactions = txOrdering.transactions;
+
+        // remember the id of the last transaction for linkage with an new transaction
+        this.lastTransactionIds = txOrdering.leafs.map(t => t.id);
+
         try {
             await this.initialize();
     
@@ -497,10 +502,6 @@ class ManagedEntitiesImpl implements ManagedEntities {
         finally {
             this.manipulationBuffer.resumeTracking();
         }
-
-        // remember the id of the last transaction for linkage with an new transaction
-        if (transactions.length > 0)
-            this.lastTransactionId = transactions[transactions.length - 1].id
 
         if (this.draft) {
             await this.draft.load();
@@ -538,13 +539,8 @@ class ManagedEntitiesImpl implements ManagedEntities {
         transaction.version = 3;
         transaction.id = util.newUuid();
         transaction.date = new Date().getTime();
-        transaction.deps = [];
+        transaction.deps = this.lastTransactionIds;
         transaction.signer = signer;
-
-        // link the transaction to a previous one if present
-        // TODO: adapt this to this.leafTransactionIds
-        if (this.lastTransactionId !== undefined)
-            transaction.deps.push(this.lastTransactionId)
 
         let diff = this.enrich(transaction, serManis);
 
@@ -594,7 +590,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
         // store the id of the appended transaction as latest transaction id
         // TODO: you need to adapt this to this.leafTransactionIds instead which probably means to subsitute one of the ids here
-        this.lastTransactionId = transaction.id;
+        this.lastTransactionIds = [transaction.id];
 
         this.transactionIds.push(transaction.id);
 
@@ -633,39 +629,6 @@ class ManagedEntitiesImpl implements ManagedEntities {
             this.databasePromise = Database.open(this.databaseName);
 
         return this.databasePromise;
-    }
-
-    // TODO: make this like transitive build (primary level dep, secondary level date)
-    // TODO: also we need a second information as result which is the leaf transactionIds
-    private orderTransactions(transactions: Transaction[]): Transaction[] {
-        const index = new Map<string, Transaction>();
-
-        for (const t of transactions) {
-            index.set(t.id, t)
-        }
-
-        const visited = new Set<Transaction>();
-        const collect = new Array<Transaction>();
-
-        for (const t of transactions) {
-            this.collect(t, visited, collect, index)
-        }
-
-        return collect
-    }
-
-    private collect(transaction: Transaction, visited: Set<Transaction>, collect: Array<Transaction>, index: Map<string, Transaction>): void {
-        if (visited.has(transaction))
-            return
-
-        visited.add(transaction)
-
-        for (const dep of transaction.deps) {
-            const depT = index.get(dep)!;
-            this.collect(depT, visited, collect, index)
-        }
-
-        collect.push(transaction)
     }
 
     getDraft(): Draft | undefined {
