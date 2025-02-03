@@ -13,6 +13,14 @@ export const ERROR_DECRYPTION_KEY = {
     message: "Key was wrong"
 } as const;
 
+export const ERROR_INCONSISTENT_TRANSACTION = {
+    message: "Transaction is corrupt"
+} as const;
+
+export const ERROR_DECODING_TRANSACTION_PAYLOAD = {
+    message: "Transaction payload could not be decoded"
+} as const;
+
 export const ERROR_WRONG_SIGNATURE = {
     message: "Signature was wrong"
 } as const;
@@ -231,6 +239,11 @@ export interface ManagedEntities {
     session: session.ManagedGmSession;
 }
 
+function deepEqualArrays<T>(arr1: T[], arr2: T[]): boolean {
+    if (arr1.length !== arr2.length) return false;
+    return arr1.every((val, index) => val === arr2[index]);
+}
+
 /**
  * Implementation of {@link ManagedEntities} that uses {@link indexedDB} as event-source persistence.
  */
@@ -378,6 +391,78 @@ class ManagedEntitiesImpl implements ManagedEntities {
                 `ID: ${id}, HASH: ${sha256Hash}.`;    
     }
 
+    private async validateAndGetPayload(tx: Transaction): Promise<TransactionPayload> {
+        let diffAsStr: string;
+        const payloadData = tx.payload;
+
+        if (typeof payloadData === "string") {
+            diffAsStr = payloadData as string;
+        }
+        else {
+            const blob = payloadData as Blob;
+            diffAsStr = await getBlobText(blob);
+        }
+
+        if (this.encryption) {
+            const decrypted = await this.encryption.decrypt(diffAsStr);;
+
+            if (decrypted == "")
+                throw ERROR_DECRYPTION_KEY;
+
+            diffAsStr = decrypted;
+        }
+        
+        if (this.security) {
+            if (tx.version == 1) {
+                const signerAddress = tx.signer!.address;
+                if (!await this.security.verify(diffAsStr, tx.signature!, signerAddress))
+                    // TODO: turn this into proper reasoning
+                    throw ERROR_WRONG_SIGNATURE;
+            }
+            else if (tx.version == 2) {
+                const hash = hashSha256(diffAsStr);
+                const message = this.createTransactionDataSigningMessageV2(tx.id, hash);
+                const signerAddress = tx.signer!.address;
+                if (!await this.security.verify(message, tx.signature!, signerAddress))
+                    // TODO: turn this into proper reasoning
+                    throw ERROR_WRONG_SIGNATURE;
+            }
+            else if (tx.version == 3) {
+                const hash = hashSha256(diffAsStr);
+                const message = this.createTransactionDataSigningMessageV3(tx.id, hash);
+                const signerAddress = tx.signer!.address;
+                if (!await this.security.verify(message, tx.signature!, signerAddress))
+                    // TODO: turn this into proper reasoning
+                    throw ERROR_WRONG_SIGNATURE;
+            }
+            else
+                throw new Error("Unsupported CRDT-Transaction version: " + tx.version)
+        }
+
+        const payload = await this.decodePayload(diffAsStr);
+
+        if (
+            payload.date !== tx.date ||
+            payload.id !== tx.id ||
+            payload.version !== tx.version ||
+            !deepEqualArrays(payload.deps, tx.deps)
+        )
+            throw ERROR_INCONSISTENT_TRANSACTION;
+                
+        return payload;
+    }
+
+    private async decodePayload(payloadAsString: string): Promise<TransactionPayload> {
+        // TODO: use async decoding with a separate worker
+        try {
+            return JSON.parse(payloadAsString) as TransactionPayload;
+        }
+        catch (error) {
+            console.error(ERROR_DECODING_TRANSACTION_PAYLOAD + " " + error);
+            throw ERROR_DECODING_TRANSACTION_PAYLOAD;
+        }
+    }
+
     async load(): Promise<void> {
 
         this.manipulationBuffer.clear();
@@ -392,70 +477,19 @@ class ManagedEntitiesImpl implements ManagedEntities {
         try {
             await this.initialize();
     
-            
-            for (const t of transactions) {
-                const marshaller = new ManipulationMarshaller();
-                const payloadData = t.payload;
-
-                let diffAsStr: string;
-
-                if (typeof payloadData === "string") {
-                    diffAsStr = payloadData as string;
-                }
-                else {
-                    const blob = payloadData as Blob;
-                    diffAsStr = await getBlobText(blob);
-                }
-
-                if (this.encryption) {
-                    const decrypted = await this.encryption.decrypt(diffAsStr);;
-
-                    if (decrypted == "")
-                        throw ERROR_DECRYPTION_KEY;
-
-                    diffAsStr = decrypted;
-                }
-
+            for (const tx of transactions) {
+                const payload = await this.validateAndGetPayload(tx);
                 
-                if (this.security) {
-                    if (t.version == 1) {
-                        const signerAddress = t.signer!.address;
-                        if (!await this.security.verify(diffAsStr, t.signature!, signerAddress))
-                            // TODO: turn this into proper reasoning
-                            throw ERROR_WRONG_SIGNATURE;
-                    }
-                    else if (t.version == 2) {
-                        const hash = hashSha256(diffAsStr);
-                        const message = this.createTransactionDataSigningMessageV2(t.id, hash);
-                        const signerAddress = t.signer!.address;
-                        if (!await this.security.verify(message, t.signature!, signerAddress))
-                            // TODO: turn this into proper reasoning
-                            throw ERROR_WRONG_SIGNATURE;
-                    }
-                    else if (t.version == 3) {
-                        const hash = hashSha256(diffAsStr);
-                        const message = this.createTransactionDataSigningMessageV3(t.id, hash);
-                        const signerAddress = t.signer!.address;
-                        if (!await this.security.verify(message, t.signature!, signerAddress))
-                            // TODO: turn this into proper reasoning
-                            throw ERROR_WRONG_SIGNATURE;
-                    }
-                    else
-                        throw new Error("Unsupported CRDT-Transaction version: " + t.version)
-                }
-
-                const payload = JSON.parse(diffAsStr) as TransactionPayload;
-
-                // TODO: check transaction fields for equality as additional check
-
                 const diff = payload.diff;
+
+                const marshaller = new ManipulationMarshaller();
                 const manis = await marshaller.unmarshalFromJson(diff)
                 const manipulator = this.session.manipulate().mode(session.ManipulationMode.REMOTE_GLOBAL);
                 for (const manipulation of manis) {
                     manipulator.apply(manipulation);
                 }
 
-                this.transactionIds.push(t.id);
+                this.transactionIds.push(tx.id);
             }
         }
         finally {
@@ -481,7 +515,9 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
         const newTxs = incomingTxs.filter(tx => !existingTxIds.has(tx.id));
 
-        // TODO: check validity with this.encryption
+        for (const tx of newTxs) {
+            await this.validateAndGetPayload(tx);
+        }
         
         this.transactionIds.push(...newTxs.map(tx => tx.id));
 
