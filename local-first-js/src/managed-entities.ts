@@ -228,6 +228,8 @@ export interface ManagedEntities {
 
     getPersistedTransactionIds(): string[];
 
+    getPersistedTransactions(ids?: Set<string>): Promise<Transaction[]>;
+
     requiresSync(): Promise<boolean>;
     
     setRequiresSync(requiresSync: boolean): Promise<void>;
@@ -672,6 +674,16 @@ class ManagedEntitiesImpl implements ManagedEntities {
 
     getPersistedTransactionIds(): string[] {
         return this.transactionIds;
+    }
+
+    async getPersistedTransactions(ids?: Set<string>): Promise<Transaction[]> {
+        const db = await this.getDatabase();
+        const txs = await db.fetch();
+
+        if (!ids)
+            return txs;
+
+        return txs.filter(tx => ids.has(tx.id));
     }
 
     async requiresSync(): Promise<boolean> {
