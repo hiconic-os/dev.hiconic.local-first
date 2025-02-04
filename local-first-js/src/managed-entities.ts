@@ -231,7 +231,7 @@ export interface ManagedEntities {
 
     getPersistedTransactions(ids?: Set<string>): Promise<Transaction[]>;
 
-    requiresSync(): Promise<boolean>;
+    requiresSync(): Promise<boolean | undefined>;
     
     setRequiresSync(requiresSync: boolean): Promise<void>;
 
@@ -649,7 +649,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
         return txs.filter(tx => ids.has(tx.id));
     }
 
-    async requiresSync(): Promise<boolean> {
+    async requiresSync(): Promise<boolean | undefined> {
         const db = await this.getDatabase();
         return db.requiresSynching();
     }
@@ -850,7 +850,7 @@ export async function listDatabases(predicate: (dbName: string) => boolean): Pro
 }
 
 type DatabaseMeta = {
-    requiresSynching: boolean,
+    requiresSynching?: boolean,
     id: "meta"
 }
 
@@ -998,7 +998,7 @@ export class Database {
         let meta = await this.get<DatabaseMeta>(Database.OBJECT_STORE_META, "meta");
 
         if (!meta)
-            meta = { id: "meta", requiresSynching: false};
+            meta = { id: "meta" };
 
         return meta;
     }
@@ -1016,7 +1016,7 @@ export class Database {
         }
     }
 
-    async requiresSynching(): Promise<boolean> {
+    async requiresSynching(): Promise<boolean | undefined> {
         let meta = await this.getMeta();
 
         return meta.requiresSynching;
