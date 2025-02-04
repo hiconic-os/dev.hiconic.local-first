@@ -894,7 +894,7 @@ export class Database {
     }
 
     private addOrUpdate(storeName: string, record: any): Promise<void> {
-        return this.update(storeName, store => store.add(record));
+        return this.update(storeName, store => store.put(record));
     }
 
     private addOrUpdateMany(storeName: string, records: any[]): Promise<void> {
