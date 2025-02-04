@@ -206,7 +206,7 @@ export interface ManagedEntities {
     /**
      * Links the signed transactions into the transaction dependency tree and persists them.
      */
-    merge(transactions: Transaction[]): Promise<void>;
+    merge(transactions: Transaction[]): Promise<Transaction[]>;
 
     /**
      * Persists the recorded and collected {@link mM.Manipulation manipulations} by appending them as a transaction to the event-source persistence.
@@ -508,7 +508,7 @@ class ManagedEntitiesImpl implements ManagedEntities {
         }
     }
 
-    async merge(incomingTxs: Transaction[]): Promise<void> {
+    async merge(incomingTxs: Transaction[]): Promise<Transaction[]> {
         const db = await this.getDatabase();
         const existingTxs = await db.fetch();
 
@@ -525,6 +525,8 @@ class ManagedEntitiesImpl implements ManagedEntities {
         this.transactionIds.push(...newTxs.map(tx => tx.id));
 
         await db.appendMany(newTxs);
+
+        return newTxs;
     }
 
     async commit(signer?: Signer, withdrawn?: () => boolean): Promise<void> {
