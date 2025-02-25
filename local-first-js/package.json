@@ -12,12 +12,15 @@
   "author": "Dirk Scheffler",
   "license": "Apache-2.0",
   "dependencies": {
+    "@dev.hiconic/gm_essential-reason-model": "2.0.x",
     "@dev.hiconic/tf.js_hc-js-api": "^3.0.10",
+    "clarinet": "^0.12.6",
     "crypto-js": "^4.2.0",
     "solid-js": "^1.9.3"
   },
   "devDependencies": {
     "@types/crypto-js": "^4.2.2",
+    "@types/node": "^22.13.5",
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
@@ -54,6 +57,10 @@
     "./manipulation-marshaler": {
       "types": "./dist/manipulation-marshaler.d.ts",
       "default": "./dist/manipulation-marshaler.js"
+    },
+    "./json-marshaller": {
+      "types": "./dist/json/json-marshaller.d.ts",
+      "default": "./dist/json/json-marshaller.js"
     },
     "./crypto": {
       "types": "./dist/crypto.d.ts",

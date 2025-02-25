@@ -903,7 +903,7 @@ export class Database {
         return this.updateMany(storeName, store => {
             const requests: IDBRequest<any>[] = [];
             for (const record of records)
-                requests.push(store.add(record))
+                requests.push(store.put(record))
 
             return requests;
         });

@@ -1,0 +1,11 @@
+{"_id": "0",
+ "mimeType": "text/plain",
+ "name": "one",
+ "resourceSource": {"_type": "com.braintribe.model.resource.source.TransientSource", "_id": "1",
+  "globalId": "foobar"
+ },
+ "tags": [
+  "one",
+  "two"
+ ]
+}
