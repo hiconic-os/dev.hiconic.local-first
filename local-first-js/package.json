@@ -14,7 +14,7 @@
   "dependencies": {
     "@dev.hiconic/gm_essential-reason-model": "2.0.x",
     "@dev.hiconic/tf.js_hc-js-api": "^3.0.10",
-    "clarinet": "^0.12.6",
+    "@xtao-org/jsonhilo": "^0.4.1",
     "crypto-js": "^4.2.0",
     "solid-js": "^1.9.3"
   },

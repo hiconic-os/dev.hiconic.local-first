@@ -5,6 +5,21 @@ import { JsonMarshaller } from "../src/json/json-marshaller.js";
 
 describe("json unmarshalling", () => {
 
+  it("syntax error", async () => {
+    const json = "{{}}";
+    
+    const marshaller = new JsonMarshaller();
+
+    try {
+      await marshaller.unmarshall(json);
+    }
+    catch (e) {
+      // TODO: check reasoning here
+    }
+
+
+  });
+
   it("map of primitives", async () => {
 
     const date = new Date(Date.UTC(2022, 0, 1, 0, 0, 0, 0));
