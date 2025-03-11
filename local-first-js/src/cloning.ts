@@ -41,7 +41,7 @@ export function cloneEntity<E extends GenericEntity>(entity: E, config?: Cloning
 export class Cloning implements CloningContext {
     private clones = new Map<GenericEntity, GenericEntity>();
 
-    private rawCloner: RawCloner = (c, e) => { 
+    private rawCloner: RawCloner = (_c, e) => { 
         return { clone: e.EntityType().createRaw(), cloneProperties: true }
     };
 
