@@ -130,7 +130,7 @@ export class JsonObjectValue extends JsonComplexValue {
 	
 	private asNativeMap(mapType: reflection.MapType): T.Map<hc.CollectionElement, hc.CollectionElement> {
 		
-		const map = new T.Map();;
+		const map = new T.Map();
 		
 		const keyType = mapType.getKeyType();
 		const valueType = mapType.getValueType();
