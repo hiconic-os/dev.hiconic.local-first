@@ -65,6 +65,10 @@
     "./crypto": {
       "types": "./dist/crypto.d.ts",
       "default": "./dist/crypto.js"
+    },
+    "./cloning": {
+      "types": "./dist/cloning.d.ts",
+      "default": "./dist/cloning.js"
     }
   },
   "repository": {
