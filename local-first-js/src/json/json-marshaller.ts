@@ -13,7 +13,8 @@ import { JsonObjectValue } from './json-object-value.js';
 import { JsonRootValue } from './json-root-value.js';
 import { JsonScalarValue } from './json-scalar-value.js';
 import { JsonValue } from './json-value.js';
-import { JsonWriter, type MarshallingOptions } from './json-writer.js';
+import { JsonWriter } from './json-writer.js';
+import type { EntityVisitor, OutputPrettiness, PropertyNameSupplier, TypeExplicitness, MarshallingOptions } from './json-writer.js';
 import { MappingError } from './mapping-error.js';
 import { SpecialField } from './special-field.js';
 
@@ -23,7 +24,7 @@ export type UnmarshallingOptions = {
   inferredRootType?: reflection.GenericModelType;
 }
 
-export type { MarshallingOptions };
+export type { MarshallingOptions, EntityVisitor, OutputPrettiness, PropertyNameSupplier, TypeExplicitness };
 
 export class JsonMarshaller {
   async unmarshall<V extends hc.Base>(json: string, options: UnmarshallingOptions = {}): Promise<V | null> {
