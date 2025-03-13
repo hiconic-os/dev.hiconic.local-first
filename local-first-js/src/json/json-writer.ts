@@ -118,9 +118,11 @@ const closeEnum = "\"}";
 const emptyList = "[]";
 const openSet = "{\"_type\": \"set\", \"value\":[";
 const emptySet = "{\"_type\": \"set\", \"value\":[]}";
+const emptyInferredSet = "[]";
 // const openMap = "{\"_type\": \"map\", \"value\":[";
 const openFlatMap = "{\"_type\": \"flatmap\", \"value\":[";
 // const emptyMap = "{\"_type\": \"map\", \"value\":[]}";
+const emptyMap = "{}";
 const emptyFlatMap = "{\"_type\": \"flatmap\", \"value\":[]}";
 const closeTypedCollection = "]}";
 // const openEntry = "{\"key\":";
@@ -475,11 +477,6 @@ export class JsonWriter {
     }
 
     private encodeMap = (_ctxType: GenericModelType, superType: reflection.MapType, map: T.Map<hc.CollectionElement | null, hc.CollectionElement | null>, simp: boolean, _isId: boolean): void => {
-        if (map.size === 0) {
-            this.writer.write(emptyFlatMap);
-            return;
-        }
-
         let i = 0;
 
         const keyType = superType.getKeyType();
@@ -490,7 +487,16 @@ export class JsonWriter {
         const isStringKey = keyType == reflection.STRING;
         const isEnumKey = keyType.isEnum();
         const writeSimpleFlatMap = !this.allowsTypeExplicitness() || isStringKey || (isEnumKey && simp);
-        
+
+		if (map.size === 0) {
+			if (writeSimpleFlatMap) {
+				this.writer.write(emptyMap);
+			} else {
+				this.writer.write(emptyFlatMap);
+			}
+            return;
+        }
+		
         if (writeSimpleFlatMap) {
             this.writer.write('{');
         } else {

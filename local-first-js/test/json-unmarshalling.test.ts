@@ -1,9 +1,22 @@
 import { Resource } from "@dev.hiconic/gm_resource-model";
-import { T, hc } from "@dev.hiconic/tf.js_hc-js-api";
+import { PushRequest } from "@dev.hiconic/gm_service-api-model";
+import { T, hc, reflection } from "@dev.hiconic/tf.js_hc-js-api";
 import { describe, expect, it } from "vitest";
 import { JsonMarshaller } from "../src/json/json-marshaller.js";
+import { TypeExplicitness } from "../src/json/json-writer.js";
 
 describe("json unmarshalling", () => {
+
+  it("request meta data serialization roundtrip", async () => {
+    const request = PushRequest.create();
+    const resource = Resource.create();
+    const marshaller = new JsonMarshaller();
+    const json = await marshaller.marshallToString(request, { typeExplicitness: TypeExplicitness.polymorphic });
+    const json2 = await marshaller.marshallToString(resource, { typeExplicitness: TypeExplicitness.polymorphic });
+    await marshaller.unmarshall(json);
+
+    console.log(json2);
+  });
 
   it("syntax error", async () => {
     const json = "{{}}";
@@ -52,6 +65,20 @@ describe("json unmarshalling", () => {
     expect(map.get("decimalValue1")).toStrictEqual(T.Decimal.valueOfDouble(5));
     expect(map.get("decimalValue2")).toStrictEqual(T.Decimal.valueOfDouble(23));
     expect(map.get("dateValue")).toStrictEqual(date);
+  });
+
+  it("inferred map of primitives", async () => {
+    const json = JSON.stringify({
+        stringValue: "Hello World!",
+        integerValue: 5,
+    });
+
+    const marshaller = new JsonMarshaller();
+    const stringToObjectMapType = reflection.typeReflection().getMapType(reflection.STRING, reflection.OBJECT);
+    const map: T.Map<string, hc.CollectionElement> = (await marshaller.unmarshall(json, { inferredRootType: stringToObjectMapType }))!;
+
+    expect(map.get("stringValue")).toBe("Hello World!");
+    expect(map.get("integerValue")).toBe(5);
   });
 
   it("inferred entity", async () => {
