@@ -118,7 +118,6 @@ const closeEnum = "\"}";
 const emptyList = "[]";
 const openSet = "{\"_type\": \"set\", \"value\":[";
 const emptySet = "{\"_type\": \"set\", \"value\":[]}";
-const emptyInferredSet = "[]";
 // const openMap = "{\"_type\": \"map\", \"value\":[";
 const openFlatMap = "{\"_type\": \"flatmap\", \"value\":[";
 // const emptyMap = "{\"_type\": \"map\", \"value\":[]}";
